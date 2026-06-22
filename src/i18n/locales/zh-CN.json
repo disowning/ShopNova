@@ -48,11 +48,11 @@
     "shopNow": "立即购买",
     "viewHot": "查看热卖",
     "ratingLabel": "4.9 综合评分",
-    "freeShipping": "满¥299 免运费",
+    "freeShipping": "满$49 免运费",
     "fastShip": "极速 24h 发货",
     "newRelease": "新品首发",
     "freeDelivery": "免费配送",
-    "freeOver299": "满 ¥299 包邮",
+    "freeOver299": "满 $49 包邮",
     "maxDiscount": "最高立减",
     "categoriesTag": "分类浏览",
     "categoriesTitle": "热门分类",
@@ -69,7 +69,7 @@
     "subtotal": "小计（{count} 件）",
     "checkoutNow": "立即结算",
     "remove": "删除",
-    "freeShippingHint": "再购 ¥{amount} 即可免运费",
+    "freeShippingHint": "再购 {amount} 即可免运费",
     "freeShippingReached": "已达到免运费门槛！"
   },
   "announcement": {
@@ -166,6 +166,9 @@
     "payment": {
       "card": "信用卡 / 借记卡",
       "cod": "货到付款",
+      "loading": "正在读取可用支付方式...",
+      "unavailableTitle": "暂无可用支付方式",
+      "unavailableDesc": "请联系商家，或在后台启用开发测试支付、Stripe、PayPal 或货到付款。",
       "demoNotice": "这是演示页面，请勿输入真实银行卡信息。测试卡号：4242 4242 4242 4242",
       "cardholderName": "持卡人姓名",
       "cardholderPlaceholder": "与银行卡一致的姓名",
@@ -173,7 +176,7 @@
       "expiry": "有效期",
       "paypalNotice": "点击“确认并付款”将跳转至 PayPal 安全支付页面完成付款（演示模式）。",
       "walletNotice": "请在设备生物验证弹窗中完成支付（演示模式）。",
-      "codNotice": "货到付款仅支持中国大陆地区，需额外收取 ¥10 手续费。"
+      "codNotice": "货到付款仅支持中国大陆地区，需额外收取 $10 手续费。"
     },
     "coupon": {
       "enterCode": "请输入优惠码",
@@ -184,7 +187,8 @@
       "placeholder": "输入优惠码（如 WELCOME15）",
       "validating": "验证中",
       "apply": "应用",
-      "hint": "提示：试试"
+      "hint": "提示：试试",
+      "demoNote": "当前优惠码为内置测试规则，仅用于演示：WELCOME15 / SAVE10 / NOVA20。生产优惠券需要接入数据库规则。"
     },
     "countries": {
       "CN": "中国",
@@ -288,7 +292,8 @@
       "cardNumberRequired": "请输入卡号",
       "expiryRequired": "请输入有效期",
       "cvvRequired": "请输入 CVV",
-      "submitFailed": "提交失败，请重试"
+      "submitFailed": "提交失败，请重试",
+      "paymentUnavailable": "当前没有可用支付方式，请先在后台启用至少一种支付方式"
     }
   },
   "order": {
@@ -333,7 +338,7 @@
     "productSubtotal": "商品小计",
     "tax": "税费",
     "total": "应付总额",
-    "saved": "已省 ¥{amount}",
+    "saved": "已省 {amount}",
     "couponApplied": "优惠码 {code}",
     "standardDelivery": "标准配送（免费）",
     "expressDelivery": "快速配送",
@@ -511,8 +516,10 @@
     "contactUs": "联系我们",
     "careers": "招聘信息",
     "mediaCooperation": "媒体合作",
+    "policies": "政策条款",
     "privacyPolicy": "隐私政策",
     "termsOfService": "使用条款",
+    "paymentSecurity": "支付安全",
     "cookieSettings": "Cookie 设置"
   },
   "aboutPages": {

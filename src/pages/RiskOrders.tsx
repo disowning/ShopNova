@@ -1,21 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, ShieldAlert, ShieldCheck, Eye, CheckCircle, XCircle, Flag, ChevronLeft, ChevronRight } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-
-interface DBRiskOrder {
-  id: string;
-  order_id: string;
-  user_email: string;
-  amount: number;
-  country: string;
-  risk_score: number;
-  risk_level: string;
-  flags: string[];
-  ip_address: string;
-  device_info: string;
-  review_status: string;
-  created_at: string;
-}
+import { AlertTriangle, ShieldAlert, ShieldCheck, Eye, CheckCircle, XCircle, Flag, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { fetchRiskStats, listRiskOrders, reviewRiskOrder, type DBRiskOrder } from '../lib/riskAdminService';
 
 const riskLevelStyle: Record<string, { badge: string; bar: string; text: string }> = {
   '极高': { badge: 'bg-red-100 text-red-800 border-red-300', bar: 'bg-red-500', text: 'text-red-700' },
@@ -31,53 +16,57 @@ const statusStyle: Record<string, string> = {
 
 const PAGE_SIZE = 15;
 
-export default function RiskOrders() {
+export default function RiskOrders({ onSelectOrder }: { onSelectOrder?: (orderId: string) => void }) {
   const [riskOrders, setRiskOrders] = useState<DBRiskOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [stats, setStats] = useState({ total: 0, pending: 0, rejected: 0, passed: 0, avgScore: 0 });
+  const [error, setError] = useState('');
+  const [actionLoading, setActionLoading] = useState('');
 
   const fetchRiskOrders = useCallback(async () => {
     setLoading(true);
-    const { data, count } = await supabase
-      .from('risk_orders')
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-
-    setRiskOrders((data ?? []) as DBRiskOrder[]);
-    setTotal(count ?? 0);
-    setLoading(false);
+    setError('');
+    try {
+      const result = await listRiskOrders(page, PAGE_SIZE);
+      setRiskOrders(result.riskOrders);
+      setTotal(result.total);
+    } catch (err) {
+      setRiskOrders([]);
+      setTotal(0);
+      setError(err instanceof Error ? err.message : '读取风险订单失败');
+    } finally {
+      setLoading(false);
+    }
   }, [page]);
 
   useEffect(() => { fetchRiskOrders(); }, [fetchRiskOrders]);
 
   useEffect(() => {
+    let ignore = false;
     (async () => {
-      const { data } = await supabase
-        .from('risk_orders')
-        .select('review_status, risk_score');
-      if (data && data.length > 0) {
-        setStats({
-          total: data.length,
-          pending: data.filter((r) => r.review_status === '待审核').length,
-          rejected: data.filter((r) => r.review_status === '已拒绝').length,
-          passed: data.filter((r) => r.review_status === '已通过').length,
-          avgScore: Math.round(data.reduce((a, r) => a + r.risk_score, 0) / data.length),
-        });
-      } else {
-        setStats({ total: 0, pending: 0, rejected: 0, passed: 0, avgScore: 0 });
+      try {
+        const result = await fetchRiskStats();
+        if (!ignore) setStats(result.stats);
+      } catch {
+        if (!ignore) setStats({ total: 0, pending: 0, rejected: 0, passed: 0, avgScore: 0 });
       }
     })();
+    return () => { ignore = true; };
   }, [riskOrders]);
 
-  const handleReview = async (id: string, status: '已通过' | '已拒绝') => {
-    await supabase
-      .from('risk_orders')
-      .update({ review_status: status, reviewed_at: new Date().toISOString() })
-      .eq('id', id);
-    fetchRiskOrders();
+  const handleReview = async (riskOrder: DBRiskOrder, status: '已通过' | '已拒绝') => {
+    setActionLoading(`${riskOrder.id}:${status}`);
+    setError('');
+    try {
+      await reviewRiskOrder(riskOrder.id, status);
+      fetchRiskOrders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '审核风险订单失败');
+    } finally {
+      setActionLoading('');
+    }
   };
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -94,6 +83,14 @@ export default function RiskOrders() {
           <p className="text-xs text-slate-400 mt-0.5">人工审核高风险交易，防止欺诈与盗刷</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={fetchRiskOrders}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            刷新
+          </button>
           {stats.pending > 0 && (
             <span className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg font-semibold">
               <AlertTriangle size={12} /> {stats.pending} 条待审核
@@ -101,6 +98,13 @@ export default function RiskOrders() {
           )}
         </div>
       </div>
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertTriangle size={14} />
+          {error}
+        </div>
+      )}
 
       {/* Summary */}
       <div className="grid grid-cols-4 gap-3">
@@ -175,9 +179,11 @@ export default function RiskOrders() {
                   const flags = Array.isArray(r.flags) ? r.flags : [];
                   return (
                     <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/40 transition-colors">
-                      <td className="px-4 py-3 font-mono font-semibold text-blue-700 whitespace-nowrap">{r.id.slice(0, 8)}</td>
+                      <td className="px-4 py-3 font-mono font-semibold text-blue-700 whitespace-nowrap">
+                        {r.orders?.order_number || r.order_id?.slice(0, 8) || r.id.slice(0, 8)}
+                      </td>
                       <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{r.user_email}</td>
-                      <td className="px-4 py-3 font-bold text-slate-800 whitespace-nowrap">¥{Number(r.amount).toLocaleString()}</td>
+                      <td className="px-4 py-3 font-bold text-slate-800 whitespace-nowrap">${Number(r.amount).toLocaleString()}</td>
                       <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{r.country}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-2">
@@ -209,11 +215,32 @@ export default function RiskOrders() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-1">
-                          <button className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-blue-50 text-blue-600 transition-colors" title="查看详情"><Eye size={12} /></button>
+                          <button
+                            onClick={() => r.order_id && onSelectOrder?.(r.order_id)}
+                            disabled={!r.order_id || !onSelectOrder}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-blue-50 text-blue-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                            title="查看订单"
+                          >
+                            <Eye size={12} />
+                          </button>
                           {r.review_status === '待审核' && (
                             <>
-                              <button onClick={() => handleReview(r.id, '已通过')} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-emerald-50 text-emerald-600 transition-colors" title="通过"><CheckCircle size={12} /></button>
-                              <button onClick={() => handleReview(r.id, '已拒绝')} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-red-500 transition-colors" title="拒绝"><XCircle size={12} /></button>
+                              <button
+                                onClick={() => handleReview(r, '已通过')}
+                                disabled={!!actionLoading}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-emerald-50 text-emerald-600 transition-colors disabled:opacity-50"
+                                title="通过"
+                              >
+                                {actionLoading === `${r.id}:已通过` ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                              </button>
+                              <button
+                                onClick={() => handleReview(r, '已拒绝')}
+                                disabled={!!actionLoading}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-red-500 transition-colors disabled:opacity-50"
+                                title="拒绝"
+                              >
+                                {actionLoading === `${r.id}:已拒绝` ? <RefreshCw size={12} className="animate-spin" /> : <XCircle size={12} />}
+                              </button>
                             </>
                           )}
                         </div>
@@ -253,8 +280,8 @@ export default function RiskOrders() {
           <div>
             <div className="text-sm font-bold text-amber-800 mb-1">风控说明</div>
             <div className="text-xs text-amber-700 leading-relaxed">
-              风险评分基于：IP 地理位置、设备指纹、邮箱信誉、历史行为、支付失败次数等多维度实时计算。评分 &ge; 80 需人工审核；
-              评分 &ge; 90 系统自动拦截。所有支付信息均已脱敏处理，CVV 不存储。
+              风险评分基于：订单金额、配送方式、邮箱域名、地址完整度、支付方式与收件信息等维度计算。评分 &ge; 80 建议人工审核；
+              评分 &ge; 90 可按站点配置自动拦截。开发测试卡支付仅用于本地测试，生产支付请使用 Stripe 或 PayPal。
             </div>
           </div>
         </div>

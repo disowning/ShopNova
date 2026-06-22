@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
-import { fetchStatusDistribution, type StatusPoint } from '../lib/adminService';
+import { fetchStatusDistribution, type DashboardFilters, type StatusPoint } from '../lib/adminService';
 
 function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
   const rad = ((angle - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
-export default function DonutChart() {
+export default function DonutChart({ filters }: { filters: DashboardFilters }) {
   const [data, setData] = useState<StatusPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchStatusDistribution().then((d) => { setData(d); setLoading(false); });
-  }, []);
+    setLoading(true);
+    fetchStatusDistribution(filters).then((d) => { setData(d); setLoading(false); });
+  }, [filters]);
 
   const total = data.reduce((a, b) => a + b.value, 0);
   const cx = 60, cy = 60, r = 42, innerR = 28;
@@ -29,7 +30,7 @@ export default function DonutChart() {
     <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm flex flex-col">
       <div className="mb-4">
         <div className="text-sm font-bold text-slate-800">订单状态分布</div>
-        <div className="text-[11px] text-slate-400 mt-0.5">各状态占比（实时）</div>
+        <div className="text-[11px] text-slate-400 mt-0.5">当前筛选条件内的状态占比</div>
       </div>
 
       {loading ? (

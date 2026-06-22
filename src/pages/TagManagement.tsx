@@ -185,6 +185,7 @@ export default function TagManagement() {
   useEffect(() => { fetchTags(); }, [fetchTags]);
 
   const handleDelete = async (id: string) => {
+    await supabase.from('product_tag_relations').delete().eq('tag_id', id);
     await supabase.from('product_tags').update({ deleted_at: new Date().toISOString() }).eq('id', id);
     setDeleteConfirm(null);
     fetchTags();

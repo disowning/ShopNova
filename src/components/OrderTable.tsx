@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Eye } from 'lucide-react';
-import { fetchOrders, statusLabel, paymentMethodLabel, type OrderRow } from '../lib/adminService';
+import { fetchOrders, statusLabel, paymentMethodLabel, type DashboardFilters, type OrderRow } from '../lib/adminService';
 
 const STATUS_STYLES: Record<string, string> = {
   paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -10,6 +10,9 @@ const STATUS_STYLES: Record<string, string> = {
   completed: 'bg-emerald-100 text-emerald-800 border-emerald-300',
   cancelled: 'bg-slate-100 text-slate-500 border-slate-200',
   refunded: 'bg-red-50 text-red-600 border-red-200',
+  unfulfilled: 'bg-slate-100 text-slate-600 border-slate-200',
+  preparing: 'bg-blue-50 text-blue-700 border-blue-200',
+  delivered: 'bg-emerald-100 text-emerald-800 border-emerald-300',
 };
 
 const PAYMENT_STYLES: Record<string, string> = {
@@ -23,26 +26,34 @@ interface Props {
   onSelect: (id: string) => void;
   selectedId: string | null;
   refreshKey?: number;
+  filters: DashboardFilters;
 }
 
-export default function OrderTable({ onSelect, selectedId, refreshKey }: Props) {
+export default function OrderTable({ onSelect, selectedId, refreshKey, filters }: Props) {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    fetchOrders({ pageSize: 10 })
+    fetchOrders({
+      pageSize: 10,
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
+      status: filters.status,
+      paymentMethod: filters.paymentMethod,
+      search: filters.search,
+    })
       .then(({ rows }) => setOrders(rows))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [refreshKey]);
+  }, [filters, refreshKey]);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
         <div>
           <div className="text-sm font-bold text-slate-800">订单列表</div>
-          <div className="text-[11px] text-slate-400 mt-0.5">最新 10 条真实订单</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">当前筛选条件下最新 10 条订单</div>
         </div>
       </div>
 
@@ -60,7 +71,7 @@ export default function OrderTable({ onSelect, selectedId, refreshKey }: Props) 
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50/60 border-b border-slate-100">
-                {['订单编号', '商品', '邮箱', '支付方式', '订单金额', '订单状态', '支付状态', '下单时间', '操作'].map((col) => (
+                {['订单编号', '商品', '邮箱', '支付方式', '订单金额', '发货物流', '订单状态', '支付状态', '下单时间', '操作'].map((col) => (
                   <th key={col} className="text-left px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{col}</th>
                 ))}
               </tr>
@@ -86,7 +97,12 @@ export default function OrderTable({ onSelect, selectedId, refreshKey }: Props) 
                     <td className="px-4 py-3.5 text-slate-700 font-medium whitespace-nowrap max-w-[140px] truncate">{productName}</td>
                     <td className="px-4 py-3.5 text-slate-500 whitespace-nowrap">{email}</td>
                     <td className="px-4 py-3.5 text-slate-500 font-mono whitespace-nowrap">{payDisplay}</td>
-                    <td className="px-4 py-3.5 font-bold text-slate-800 whitespace-nowrap">¥{order.total_amount.toFixed(2)}</td>
+                    <td className="px-4 py-3.5 font-bold text-slate-800 whitespace-nowrap">${order.total_amount.toFixed(2)}</td>
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_STYLES[order.shipping_status] ?? 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                        {statusLabel(order.shipping_status || 'unfulfilled')}
+                      </span>
+                    </td>
                     <td className="px-4 py-3.5 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_STYLES[order.status] ?? 'bg-slate-100 text-slate-500 border-slate-200'}`}>
                         {statusLabel(order.status)}

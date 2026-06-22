@@ -48,11 +48,11 @@
     "shopNow": "Shop Now",
     "viewHot": "Best Sellers",
     "ratingLabel": "4.9 Rating",
-    "freeShipping": "Free Shipping over ¥299",
+    "freeShipping": "Free Shipping over $49",
     "fastShip": "Ships within 24h",
     "newRelease": "New Release",
     "freeDelivery": "Free Delivery",
-    "freeOver299": "Free over ¥299",
+    "freeOver299": "Free over $49",
     "maxDiscount": "Up to",
     "categoriesTag": "Browse",
     "categoriesTitle": "Popular Categories",
@@ -69,7 +69,7 @@
     "subtotal": "Subtotal ({count} items)",
     "checkoutNow": "Proceed to Checkout",
     "remove": "Remove",
-    "freeShippingHint": "Add ¥{amount} more for free shipping",
+    "freeShippingHint": "Add {amount} more for free shipping",
     "freeShippingReached": "You qualify for free shipping!"
   },
   "announcement": {
@@ -166,6 +166,9 @@
     "payment": {
       "card": "Credit / Debit Card",
       "cod": "Cash on Delivery",
+      "loading": "Loading available payment methods...",
+      "unavailableTitle": "No payment method available",
+      "unavailableDesc": "Please contact the merchant, or enable development test payment, Stripe, PayPal, or cash on delivery in admin.",
       "demoNotice": "This is a demo page. Do not enter real bank card information. Test card: 4242 4242 4242 4242",
       "cardholderName": "Cardholder Name",
       "cardholderPlaceholder": "Name as shown on card",
@@ -173,7 +176,7 @@
       "expiry": "Expiry Date",
       "paypalNotice": "Click “Confirm & Pay” to continue to the PayPal secure payment page. Demo mode only.",
       "walletNotice": "Complete payment in your device verification prompt. Demo mode only.",
-      "codNotice": "Cash on delivery is only available in mainland China and includes an extra ¥10 handling fee."
+      "codNotice": "Cash on delivery is only available in mainland China and includes an extra $10 handling fee."
     },
     "coupon": {
       "enterCode": "Please enter a coupon code",
@@ -184,7 +187,8 @@
       "placeholder": "Enter coupon code (e.g. WELCOME15)",
       "validating": "Checking",
       "apply": "Apply",
-      "hint": "Tip: try"
+      "hint": "Tip: try",
+      "demoNote": "Current coupons are built-in test rules for demo use only: WELCOME15 / SAVE10 / NOVA20. Production coupons need database-backed rules."
     },
     "countries": {
       "CN": "China",
@@ -288,7 +292,8 @@
       "cardNumberRequired": "Card number is required",
       "expiryRequired": "Expiry date is required",
       "cvvRequired": "CVV is required",
-      "submitFailed": "Submission failed, please try again"
+      "submitFailed": "Submission failed, please try again",
+      "paymentUnavailable": "No payment method is available. Enable at least one payment method in admin first."
     }
   },
   "order": {
@@ -333,7 +338,7 @@
     "productSubtotal": "Subtotal",
     "tax": "Tax",
     "total": "Total",
-    "saved": "Saved ¥{amount}",
+    "saved": "Saved {amount}",
     "couponApplied": "Coupon: {code}",
     "standardDelivery": "Standard Delivery (Free)",
     "expressDelivery": "Express Delivery",
@@ -511,8 +516,10 @@
     "contactUs": "Contact Us",
     "careers": "Careers",
     "mediaCooperation": "Press",
+    "policies": "Policies",
     "privacyPolicy": "Privacy Policy",
     "termsOfService": "Terms of Service",
+    "paymentSecurity": "Payment Security",
     "cookieSettings": "Cookie Settings"
   },
   "aboutPages": {

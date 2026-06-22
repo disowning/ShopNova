@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { Eye, Download, RefreshCw, ChevronLeft, ChevronRight, Search, AlertCircle } from 'lucide-react';
 import {
   fetchOrders,
   statusLabel,
   paymentMethodLabel,
+  deliveryLabel,
   type OrderRow,
 } from '../lib/adminService';
 
@@ -15,6 +16,9 @@ const STATUS_STYLES: Record<string, string> = {
   completed: 'bg-emerald-100 text-emerald-800 border-emerald-300',
   cancelled: 'bg-slate-100 text-slate-500 border-slate-200',
   refunded: 'bg-red-50 text-red-600 border-red-200',
+  unfulfilled: 'bg-slate-100 text-slate-600 border-slate-200',
+  preparing: 'bg-blue-50 text-blue-700 border-blue-200',
+  delivered: 'bg-emerald-100 text-emerald-800 border-emerald-300',
 };
 
 const PAYMENT_STYLES: Record<string, string> = {
@@ -45,6 +49,42 @@ const PAYMENT_STATUS_OPTIONS = [
 
 const PAGE_SIZE = 15;
 
+function csvEscape(value: unknown) {
+  const text = value === null || value === undefined ? '' : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function toCsv(rows: Array<Record<string, unknown>>) {
+  if (rows.length === 0) return '';
+  const headers = Object.keys(rows[0]);
+  return [
+    headers.map(csvEscape).join(','),
+    ...rows.map((row) => headers.map((key) => csvEscape(row[key])).join(',')),
+  ].join('\n');
+}
+
+function downloadText(fileName: string, text: string, type = 'text/plain;charset=utf-8') {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function formatOrderItems(order: OrderRow) {
+  const items = order.items ?? [];
+  if (items.length === 0) return '';
+  return items.map((item) => `${item.product_name} x${item.qty}`).join(' / ');
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString('zh-CN');
+}
+
 interface Props {
   onSelect: (id: string) => void;
   selectedId: string | null;
@@ -56,7 +96,9 @@ export default function OrderManagement({ onSelect, selectedId, refreshKey }: Pr
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -92,6 +134,59 @@ export default function OrderManagement({ onSelect, selectedId, refreshKey }: Pr
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const handleExportOrders = async () => {
+    setExporting(true);
+    setMessage(null);
+    try {
+      const { rows } = await fetchOrders({
+        search,
+        status: statusFilter,
+        paymentStatus: paymentFilter,
+        dateFrom,
+        dateTo,
+        page: 1,
+        pageSize: 10000,
+      });
+
+      if (rows.length === 0) {
+        setMessage({ type: 'error', text: '当前筛选条件下没有可导出的订单。' });
+        return;
+      }
+
+      const csvRows = rows.map((order) => ({
+        订单编号: order.order_number,
+        商品: formatOrderItems(order),
+        收件人: order.shipping_address?.recipient_name ?? '',
+        邮箱: order.shipping_address?.email ?? '',
+        手机: order.shipping_address?.phone ?? '',
+        国家: order.shipping_address?.country ?? '',
+        省份: order.shipping_address?.province ?? '',
+        城市: order.shipping_address?.city ?? '',
+        地址: [order.shipping_address?.street1, order.shipping_address?.street2].filter(Boolean).join(' '),
+        支付方式: order.payment ? paymentMethodLabel(order.payment.payment_method) : '',
+        配送方式: deliveryLabel(order.delivery_method),
+        订单金额: Number(order.total_amount).toFixed(2),
+        订单状态: statusLabel(order.status),
+        支付状态: statusLabel(order.payment_status),
+        发货状态: statusLabel(order.shipping_status || 'unfulfilled'),
+        物流公司: order.carrier || '',
+        运单号: order.tracking_number || '',
+        下单时间: formatDateTime(order.created_at),
+      }));
+
+      downloadText(
+        `shopnova-orders-${new Date().toISOString().slice(0, 10)}.csv`,
+        `\uFEFF${toCsv(csvRows)}`,
+        'text/csv;charset=utf-8',
+      );
+      setMessage({ type: 'success', text: `已导出 ${rows.length} 条订单。` });
+    } catch (error) {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : '导出订单失败' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -104,11 +199,26 @@ export default function OrderManagement({ onSelect, selectedId, refreshKey }: Pr
           <button onClick={() => load(page)} className="flex items-center gap-1.5 text-xs text-slate-600 border border-slate-200 bg-white px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors">
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> 刷新
           </button>
-          <button className="flex items-center gap-1.5 text-xs text-white bg-blue-600 px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-            <Download size={12} /> 导出订单
+          <button
+            type="button"
+            onClick={handleExportOrders}
+            disabled={exporting || total === 0}
+            className="flex items-center gap-1.5 text-xs text-white bg-blue-600 px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download size={12} /> {exporting ? '导出中...' : '导出订单'}
           </button>
         </div>
       </div>
+
+      {message && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${
+          message.type === 'success'
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+            : 'border-red-200 bg-red-50 text-red-700'
+        }`}>
+          {message.text}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm space-y-3">
@@ -192,8 +302,7 @@ export default function OrderManagement({ onSelect, selectedId, refreshKey }: Pr
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-slate-50/60 border-b border-slate-100">
-                  <th className="w-8 px-4 py-3"><input type="checkbox" className="rounded border-slate-300" /></th>
-                  {['订单编号', '商品', '邮箱', '支付方式', '订单金额', '订单状态', '支付状态', '下单时间', '操作'].map((c) => (
+                  {['订单编号', '商品', '邮箱', '支付方式', '订单金额', '发货物流', '订单状态', '支付状态', '下单时间', '操作'].map((c) => (
                     <th key={c} className="text-left px-3 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{c}</th>
                   ))}
                 </tr>
@@ -215,14 +324,19 @@ export default function OrderManagement({ onSelect, selectedId, refreshKey }: Pr
                       className={`border-b border-slate-50 hover:bg-blue-50/20 transition-colors cursor-pointer ${isSelected ? 'bg-blue-50/40' : ''}`}
                       onClick={() => onSelect(o.id)}
                     >
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" className="rounded border-slate-300" />
-                      </td>
                       <td className="px-3 py-3 font-mono font-semibold text-blue-700 whitespace-nowrap">{o.order_number}</td>
                       <td className="px-3 py-3 text-slate-700 font-medium whitespace-nowrap max-w-[140px] truncate">{productName}</td>
                       <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{email}</td>
                       <td className="px-3 py-3 text-slate-500 font-mono whitespace-nowrap text-[10px]">{payDisplay}</td>
-                      <td className="px-3 py-3 font-bold text-slate-800 whitespace-nowrap">¥{o.total_amount.toFixed(2)}</td>
+                      <td className="px-3 py-3 font-bold text-slate-800 whitespace-nowrap">${o.total_amount.toFixed(2)}</td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <div className="flex flex-col gap-1">
+                          <span className={`inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_STYLES[o.shipping_status] ?? 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                            {statusLabel(o.shipping_status || 'unfulfilled')}
+                          </span>
+                          {o.tracking_number && <span className="font-mono text-[10px] text-slate-400">{o.tracking_number}</span>}
+                        </div>
+                      </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_STYLES[o.status] ?? 'bg-slate-100 text-slate-500 border-slate-200'}`}>
                           {statusLabel(o.status)}

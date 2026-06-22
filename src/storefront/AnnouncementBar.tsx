@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useStore } from './StoreContext';
 import { useT } from '../i18n';
 import { useSiteSettings } from './SiteSettingsContext';
+import { editableAttrs } from './visualEditor';
 
 export default function AnnouncementBar() {
   const { navigate } = useStore();
@@ -18,7 +19,16 @@ export default function AnnouncementBar() {
           <span>placeholder</span>
         </div>
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="font-medium tracking-wide">
+          <span
+            className="font-medium tracking-wide"
+            {...editableAttrs({
+              entryId: 'header.announcement',
+              source: 'siteSettings',
+              settingSection: 'storeForm',
+              settingKey: 'announcementText',
+              label: '顶部公告条',
+            })}
+          >
             {text('announcementText')}
           </span>
         </div>

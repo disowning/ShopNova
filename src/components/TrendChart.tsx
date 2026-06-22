@@ -1,19 +1,22 @@
 import { useEffect, useState } from 'react';
-import { fetchTrend30Days, type TrendPoint } from '../lib/adminService';
+import { fetchTrend30Days, type DashboardFilters, type TrendPoint } from '../lib/adminService';
 
-export default function TrendChart() {
+export default function TrendChart({ filters }: { filters: DashboardFilters }) {
   const [data, setData] = useState<TrendPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchTrend30Days().then((d) => { setData(d); setLoading(false); });
-  }, []);
+    setLoading(true);
+    fetchTrend30Days(filters).then((d) => { setData(d); setLoading(false); });
+  }, [filters]);
+
+  const rangeLabel = filters.dateFrom && filters.dateTo ? `${filters.dateFrom} ~ ${filters.dateTo}` : '近 30 天';
 
   if (loading || data.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm flex flex-col" style={{ minHeight: 240 }}>
         <div className="text-sm font-bold text-slate-800 mb-1">订单趋势</div>
-        <div className="text-[11px] text-slate-400 mb-4">近 30 天订单量变化</div>
+        <div className="text-[11px] text-slate-400 mb-4">{rangeLabel} 订单量变化</div>
         <div className="flex-1 flex items-center justify-center">
           {loading
             ? <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
@@ -41,22 +44,20 @@ export default function TrendChart() {
 
   const total = data.reduce((a, b) => a + b.orders, 0);
   const avg = Math.round(total / data.length);
-  const now = new Date();
-  const monthLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <div>
           <div className="text-sm font-bold text-slate-800">订单趋势</div>
-          <div className="text-[11px] text-slate-400 mt-0.5">近 30 天订单量变化</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">{rangeLabel} 订单量变化</div>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
             <div className="w-3 h-0.5 bg-blue-500 rounded-full" />
             <span>订单量</span>
           </div>
-          <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-semibold border border-blue-100">{monthLabel}</span>
+          <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-semibold border border-blue-100">{data.length} 天</span>
         </div>
       </div>
 
@@ -93,7 +94,7 @@ export default function TrendChart() {
         </div>
         <div className="text-center">
           <div className="text-sm font-bold text-slate-800">{total.toLocaleString()}</div>
-          <div className="text-[10px] text-slate-400">月总计</div>
+          <div className="text-[10px] text-slate-400">区间总计</div>
         </div>
       </div>
     </div>

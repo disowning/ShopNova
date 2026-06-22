@@ -4,18 +4,7 @@ import type { Product } from './types';
 import { useStore } from './StoreContext';
 import { useT } from '../i18n';
 import { getCategoryName } from './categoryLabels';
-
-const badgeKeys: Record<string, string> = {
-  热卖: 'common.hot',
-  新品: 'common.new',
-  限时折扣: 'common.flashDiscount',
-};
-
-const badgeStyle: Record<string, string> = {
-  热卖: 'bg-rose-500 text-white',
-  新品: 'bg-violet-600 text-white',
-  限时折扣: 'bg-amber-500 text-white',
-};
+import { useSiteSettings } from './SiteSettingsContext';
 
 interface ProductCardProps {
   product: Product;
@@ -25,9 +14,12 @@ interface ProductCardProps {
 export default function ProductCard({ product, variant = 'default' }: ProductCardProps) {
   const { navigate, addToCart, wishlist, toggleWishlist } = useStore();
   const { t } = useT();
+  const { text, storeSwitches } = useSiteSettings();
   const [added, setAdded] = useState(false);
   const isWished = wishlist.includes(product.id);
   const discount = Math.round((1 - product.price / product.originalPrice) * 100);
+  const currencySymbol = text('currencySymbol');
+  const visibleTags = product.tags.slice(0, 2);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -61,9 +53,17 @@ export default function ProductCard({ product, variant = 'default' }: ProductCar
           alt={product.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
-        {product.badge && (
-          <div className={`absolute top-3 left-3 text-[10px] font-bold px-2.5 py-1 rounded-full shadow-sm ${badgeStyle[product.badge]}`}>
-            {t(badgeKeys[product.badge] || product.badge)}
+        {visibleTags.length > 0 && (
+          <div className="absolute top-3 left-3 flex max-w-[calc(100%-5.5rem)] flex-wrap gap-1">
+            {visibleTags.map((tag) => (
+              <span
+                key={tag.id}
+                className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white shadow-sm"
+                style={{ backgroundColor: tag.color || '#3b82f6' }}
+              >
+                {tag.name}
+              </span>
+            ))}
           </div>
         )}
         <div className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
@@ -91,23 +91,31 @@ export default function ProductCard({ product, variant = 'default' }: ProductCar
           <p className="text-xs text-slate-500 line-clamp-1 mb-3">{product.tagline}</p>
         )}
 
-        <div className="flex items-center gap-2 mb-3">
-          <div className="flex items-center gap-0.5">
-            {[...Array(5)].map((_, i) => (
-              <Star
-                key={i}
-                size={10}
-                className={i < Math.floor(product.rating) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'}
-              />
-            ))}
+        {(storeSwitches.showReviews || storeSwitches.showSalesCount) && (
+          <div className="flex items-center gap-2 mb-3">
+            {storeSwitches.showReviews && (
+              <>
+                <div className="flex items-center gap-0.5">
+                  {[...Array(5)].map((_, i) => (
+                    <Star
+                      key={i}
+                      size={10}
+                      className={i < Math.floor(product.rating) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs font-semibold text-slate-700">{product.rating}</span>
+              </>
+            )}
+            {storeSwitches.showSalesCount && (
+              <span className="text-[11px] text-slate-400">{t('common.soldCount', { count: product.sold.toLocaleString() })}</span>
+            )}
           </div>
-          <span className="text-xs font-semibold text-slate-700">{product.rating}</span>
-          <span className="text-[11px] text-slate-400">{t('common.soldCount', { count: product.sold.toLocaleString() })}</span>
-        </div>
+        )}
 
         <div className="flex items-baseline gap-2 mb-4">
-          <span className="text-xl font-black text-slate-900">¥{product.price}</span>
-          <span className="text-sm text-slate-400 line-through">¥{product.originalPrice}</span>
+          <span className="text-xl font-black text-slate-900">{currencySymbol}{product.price}</span>
+          <span className="text-sm text-slate-400 line-through">{currencySymbol}{product.originalPrice}</span>
         </div>
 
         <button

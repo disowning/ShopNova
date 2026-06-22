@@ -5,6 +5,7 @@ import { useStore } from './StoreContext';
 import { supabase } from '../lib/supabase';
 import { statusLabel, statusColor } from '../lib/adminService';
 import { useT } from '../i18n';
+import { useSiteSettings } from './SiteSettingsContext';
 
 interface OrderSummary {
   id: string;
@@ -14,6 +15,33 @@ interface OrderSummary {
   total_amount: number;
   created_at: string;
   items: { product_name: string; product_image: string; qty: number }[];
+}
+
+interface OrderDetailRecord {
+  order_number: string;
+  status: string;
+  created_at: string;
+  subtotal_amount: number;
+  discount_amount: number;
+  shipping_fee: number;
+  total_amount: number;
+  order_items?: {
+    id: string;
+    product_image: string;
+    product_name: string;
+    sku_description: string;
+    qty: number;
+    unit_price: number;
+    subtotal: number;
+  }[];
+  shipping_addresses?: {
+    recipient_name: string;
+    phone: string;
+    province: string;
+    city: string;
+    street1: string;
+    street2?: string;
+  } | null;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -28,7 +56,9 @@ function StatusBadge({ status }: { status: string }) {
 
 function OrderCard({ order, onClick }: { order: OrderSummary; onClick: () => void }) {
   const { t } = useT();
+  const { text } = useSiteSettings();
   const firstItem = order.items[0];
+  const currencySymbol = text('currencySymbol');
   return (
     <div
       onClick={onClick}
@@ -51,7 +81,7 @@ function OrderCard({ order, onClick }: { order: OrderSummary; onClick: () => voi
           <div className="text-xs text-slate-400 mt-0.5">{new Date(order.created_at).toLocaleString('zh-CN')}</div>
         </div>
         <div className="text-right flex-shrink-0">
-          <div className="text-base font-black text-slate-900">¥{order.total_amount.toFixed(2)}</div>
+          <div className="text-base font-black text-slate-900">{currencySymbol}{order.total_amount.toFixed(2)}</div>
         </div>
       </div>
     </div>
@@ -60,8 +90,10 @@ function OrderCard({ order, onClick }: { order: OrderSummary; onClick: () => voi
 
 function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const { t } = useT();
-  const [order, setOrder] = useState<Record<string, any> | null>(null);
+  const { text } = useSiteSettings();
+  const [order, setOrder] = useState<OrderDetailRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const currencySymbol = text('currencySymbol');
 
   useEffect(() => {
     supabase
@@ -69,7 +101,7 @@ function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () =
       .select('*, shipping_addresses(*), order_items(*), payments(*)')
       .eq('id', orderId)
       .maybeSingle()
-      .then(({ data }) => { setOrder(data); setLoading(false); });
+      .then(({ data }) => { setOrder(data as OrderDetailRecord | null); setLoading(false); });
   }, [orderId]);
 
   return (
@@ -95,10 +127,10 @@ function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () =
           <div className="px-6 py-5 space-y-5">
             {/* Header info */}
             <div className="flex items-center justify-between">
-              <span className="font-mono text-sm font-bold text-blue-700">{order.order_number as string}</span>
-              <StatusBadge status={order.status as string} />
+              <span className="font-mono text-sm font-bold text-blue-700">{order.order_number}</span>
+              <StatusBadge status={order.status} />
             </div>
-            <div className="text-xs text-slate-400">{new Date(order.created_at as string).toLocaleString('zh-CN')}</div>
+            <div className="text-xs text-slate-400">{new Date(order.created_at).toLocaleString('zh-CN')}</div>
 
             {/* Items */}
             {((order.order_items || []) as { id: string; product_image: string; product_name: string; sku_description: string; qty: number; unit_price: number; subtotal: number }[]).map((item) => (
@@ -109,7 +141,7 @@ function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () =
                   {item.sku_description && <div className="text-xs text-slate-400 mt-0.5">{item.sku_description}</div>}
                   <div className="flex items-center justify-between mt-1.5">
                     <span className="text-xs text-slate-500">× {item.qty}</span>
-                    <span className="text-sm font-bold text-slate-800">¥{item.subtotal.toFixed(2)}</span>
+                    <span className="text-sm font-bold text-slate-800">{currencySymbol}{item.subtotal.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -117,10 +149,10 @@ function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () =
 
             {/* Pricing */}
             <div className="bg-slate-50 rounded-xl p-4 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-slate-500">{t('order.productSubtotal')}</span><span>¥{(order.subtotal_amount as number).toFixed(2)}</span></div>
-              {(order.discount_amount as number) > 0 && <div className="flex justify-between text-emerald-600"><span>{t('order.discount')}</span><span>-¥{(order.discount_amount as number).toFixed(2)}</span></div>}
-              <div className="flex justify-between"><span className="text-slate-500">{t('order.shipping')}</span><span>{(order.shipping_fee as number) > 0 ? `¥${(order.shipping_fee as number).toFixed(2)}` : t('common.free')}</span></div>
-              <div className="flex justify-between font-bold text-base border-t border-slate-200 pt-2"><span>{t('order.totalPaid')}</span><span className="text-blue-700">¥{(order.total_amount as number).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">{t('order.productSubtotal')}</span><span>{currencySymbol}{order.subtotal_amount.toFixed(2)}</span></div>
+              {order.discount_amount > 0 && <div className="flex justify-between text-emerald-600"><span>{t('order.discount')}</span><span>-{currencySymbol}{order.discount_amount.toFixed(2)}</span></div>}
+              <div className="flex justify-between"><span className="text-slate-500">{t('order.shipping')}</span><span>{order.shipping_fee > 0 ? `${currencySymbol}${order.shipping_fee.toFixed(2)}` : t('common.free')}</span></div>
+              <div className="flex justify-between font-bold text-base border-t border-slate-200 pt-2"><span>{t('order.totalPaid')}</span><span className="text-blue-700">{currencySymbol}{order.total_amount.toFixed(2)}</span></div>
             </div>
 
             {/* Address */}
@@ -128,10 +160,10 @@ function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () =
               <div className="space-y-1">
                 <div className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5"><MapPin size={11} />{t('order.shippingAddress')}</div>
                 <div className="text-sm text-slate-700">
-                  {(order.shipping_addresses as { recipient_name: string; phone: string; province: string; city: string; street1: string }).recipient_name} · {(order.shipping_addresses as { phone: string }).phone}
+                  {order.shipping_addresses.recipient_name} · {order.shipping_addresses.phone}
                 </div>
                 <div className="text-sm text-slate-500">
-                  {(order.shipping_addresses as { province: string; city: string; street1: string; street2?: string }).province} {(order.shipping_addresses as { city: string }).city} {(order.shipping_addresses as { street1: string }).street1} {(order.shipping_addresses as { street2?: string }).street2 ?? ''}
+                  {order.shipping_addresses.province} {order.shipping_addresses.city} {order.shipping_addresses.street1} {order.shipping_addresses.street2 ?? ''}
                 </div>
               </div>
             )}

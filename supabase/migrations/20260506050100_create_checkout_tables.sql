@@ -39,7 +39,7 @@
   Simulated payment records. Stores full card data for dev/test mode only.
   - id (uuid, pk)
   - order_id (fk → orders)
-  - payment_method: card | paypal | applepay | googlepay | cod
+  - payment_method: card | stripe | paypal | cod
   - status: success | failed | pending
   - amount
   - card_holder_name, card_number (full, dev/test only), card_last4, card_expiry, card_cvv

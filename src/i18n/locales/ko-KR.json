@@ -46,7 +46,7 @@
     "subtotal": "소계 ({count}개)",
     "checkoutNow": "결제하기",
     "remove": "삭제",
-    "freeShippingHint": "¥{amount} 더 담으면 무료 배송",
+    "freeShippingHint": "{amount} 더 담으면 무료 배송",
     "freeShippingReached": "무료 배송 조건을 충족했습니다!"
   },
   "announcement": {
@@ -141,6 +141,9 @@
     "payment": {
       "card": "신용카드 / 체크카드",
       "cod": "착불 결제",
+      "loading": "사용 가능한 결제 수단을 불러오는 중...",
+      "unavailableTitle": "사용 가능한 결제 수단이 없습니다",
+      "unavailableDesc": "판매자에게 문의하거나 관리자에서 개발 테스트 결제, Stripe, PayPal 또는 착불 결제를 활성화하세요.",
       "demoNotice": "이 페이지는 데모입니다. 실제 카드 정보를 입력하지 마세요. 테스트 카드: 4242 4242 4242 4242",
       "cardholderName": "카드 소유자 이름",
       "cardholderPlaceholder": "카드에 표시된 이름",
@@ -148,7 +151,7 @@
       "expiry": "유효기간",
       "paypalNotice": "“확인 후 결제”를 누르면 PayPal 보안 결제 페이지로 이동합니다. 데모 모드입니다.",
       "walletNotice": "기기 인증 창에서 결제를 완료하세요. 데모 모드입니다.",
-      "codNotice": "착불 결제는 중국 본토 지역에서만 지원되며 ¥10의 추가 수수료가 부과됩니다."
+      "codNotice": "착불 결제는 중국 본토 지역에서만 지원되며 $10의 추가 수수료가 부과됩니다."
     },
     "coupon": {
       "enterCode": "쿠폰 코드를 입력하세요",
@@ -159,7 +162,8 @@
       "placeholder": "쿠폰 코드 입력 (예: WELCOME15)",
       "validating": "확인 중",
       "apply": "적용",
-      "hint": "팁: 사용해 보기"
+      "hint": "팁: 사용해 보기",
+      "demoNote": "현재 쿠폰은 데모용 내장 테스트 규칙입니다: WELCOME15 / SAVE10 / NOVA20. 운영 쿠폰은 데이터베이스 기반 규칙이 필요합니다."
     },
     "countries": {
       "CN": "중국", "HK": "홍콩", "TW": "대만", "MO": "마카오", "US": "미국", "CA": "캐나다", "MX": "멕시코", "BR": "브라질", "AR": "아르헨티나", "CL": "칠레",
@@ -185,7 +189,12 @@
       "cityRequired": "도시를 입력하세요",
       "postalRequired": "우편번호를 입력하세요",
       "addressRequired": "주소를 입력하세요",
-      "submitFailed": "제출에 실패했습니다. 다시 시도하세요"
+      "cardNameRequired": "카드 소유자 이름을 입력하세요",
+      "cardNumberRequired": "카드 번호를 입력하세요",
+      "expiryRequired": "유효기간을 입력하세요",
+      "cvvRequired": "CVV를 입력하세요",
+      "submitFailed": "제출에 실패했습니다. 다시 시도하세요",
+      "paymentUnavailable": "사용 가능한 결제 수단이 없습니다. 관리자에서 결제 수단을 하나 이상 활성화하세요."
     }
   },
   "footer": {

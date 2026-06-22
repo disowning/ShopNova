@@ -1,11 +1,22 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { fetchPublicSiteSettings, mergeSiteSettings, type SiteSettings } from '../lib/siteSettings';
+import {
+  fetchPublicSiteSettings,
+  mergeSiteSettings,
+  type SiteSettings,
+  type StoreFooterLink,
+  type StoreFooterLinkSection,
+  type StoreNavigationLink,
+} from '../lib/siteSettings';
+import { SOURCE_LOCALE } from '../lib/translationService';
 import { useT } from '../i18n';
 
 interface SiteSettingsContextValue extends SiteSettings {
   loading: boolean;
   text: (key: keyof SiteSettings['storeForm']) => string;
+  headerNavLabel: (link: StoreNavigationLink) => string;
+  footerSectionTitle: (section: StoreFooterLinkSection) => string;
+  footerLinkLabel: (sectionId: string, link: StoreFooterLink) => string;
 }
 
 const SiteSettingsContext = createContext<SiteSettingsContextValue | null>(null);
@@ -32,7 +43,7 @@ function updateFavicon(href: string) {
 }
 
 export function SiteSettingsProvider({ children }: { children: ReactNode }) {
-  const { t } = useT();
+  const { locale, t } = useT();
   const [settings, setSettings] = useState<SiteSettings>(() => mergeSiteSettings());
   const [loading, setLoading] = useState(true);
 
@@ -55,8 +66,9 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
     const descriptionKey = 'storeProfile.siteDescription';
     const translatedTitle = t(titleKey);
     const translatedDescription = t(descriptionKey);
-    const title = translatedTitle === titleKey ? settings.storeForm.siteTitle : translatedTitle;
-    const description = translatedDescription === descriptionKey ? settings.storeForm.siteDescription : translatedDescription;
+    const useConfiguredText = locale === SOURCE_LOCALE;
+    const title = useConfiguredText || translatedTitle === titleKey ? settings.storeForm.siteTitle : translatedTitle;
+    const description = useConfiguredText || translatedDescription === descriptionKey ? settings.storeForm.siteDescription : translatedDescription;
 
     if (title) {
       document.title = title;
@@ -80,6 +92,7 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
     settings.storeForm.logoUrl,
     settings.storeForm.siteDescription,
     settings.storeForm.siteTitle,
+    locale,
     t,
   ]);
 
@@ -87,11 +100,36 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
     ...settings,
     loading,
     text: (key) => {
+      if (locale === SOURCE_LOCALE) return settings.storeForm[key];
       const translationKey = `storeProfile.${key}`;
       const translated = t(translationKey);
       return translated === translationKey ? settings.storeForm[key] : translated;
     },
-  }), [loading, settings, t]);
+    headerNavLabel: (link) => {
+      if (locale === SOURCE_LOCALE) return link.label;
+      const configuredKey = `navigation.header.${link.id}.label`;
+      const configuredTranslation = t(configuredKey);
+      if (configuredTranslation !== configuredKey) return configuredTranslation;
+
+      return link.label;
+    },
+    footerSectionTitle: (section) => {
+      if (locale === SOURCE_LOCALE) return section.title;
+      const configuredKey = `navigation.footer.${section.id}.title`;
+      const configuredTranslation = t(configuredKey);
+      if (configuredTranslation !== configuredKey) return configuredTranslation;
+
+      return section.title;
+    },
+    footerLinkLabel: (sectionId, link) => {
+      if (locale === SOURCE_LOCALE) return link.label;
+      const configuredKey = `navigation.footer.${sectionId}.${link.id}.label`;
+      const configuredTranslation = t(configuredKey);
+      if (configuredTranslation !== configuredKey) return configuredTranslation;
+
+      return link.label;
+    },
+  }), [loading, locale, settings, t]);
 
   return (
     <SiteSettingsContext.Provider value={value}>

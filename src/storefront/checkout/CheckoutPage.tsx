@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { User, MapPin, Truck, CreditCard, Tag, MessageSquare, Lock, ArrowLeft, ShieldCheck, AlertTriangle } from 'lucide-react';
 import CheckoutHeader from './CheckoutHeader';
 import SectionCard from './SectionCard';
@@ -10,6 +10,7 @@ import OrderSummary from './OrderSummary';
 import { useStore } from '../StoreContext';
 import { useAuth } from '../AuthContext';
 import { submitOrder } from '../../lib/checkoutService';
+import { fetchStorefrontPaymentOptions, type StorefrontPaymentOption } from '../../lib/paymentSettings';
 import { useT } from '../../i18n';
 
 const deliveryFeeMap: Record<DeliveryMethod, number> = {
@@ -95,6 +96,8 @@ export default function CheckoutPage() {
   const hasProvinceOptions = regionCodes.length > 0;
   const [delivery, setDelivery] = useState<DeliveryMethod>('standard');
   const [payment, setPayment] = useState<PaymentMethod>('card');
+  const [paymentOptions, setPaymentOptions] = useState<StorefrontPaymentOption[]>([]);
+  const [paymentOptionsLoading, setPaymentOptionsLoading] = useState(true);
   const [cardData, setCardData] = useState<CardData>({ name: '', number: '', expiry: '', cvv: '' });
   const [errors, setErrors] = useState<FormErrors>({});
   const [couponCode, setCouponCode] = useState('');
@@ -105,6 +108,32 @@ export default function CheckoutPage() {
   const subtotal = cart.reduce((a, item) => a + item.effectivePrice * item.qty, 0);
   const shippingFee = deliveryFeeMap[delivery];
   const total = subtotal + shippingFee - discountAmount;
+  const paymentUnavailable = !paymentOptionsLoading && paymentOptions.length === 0;
+  const paymentBlocked = paymentOptionsLoading || paymentUnavailable;
+  const devTestPaymentEnabled = paymentOptions.some((option) => option.providerId === 'dev_card');
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadPaymentOptions() {
+      setPaymentOptionsLoading(true);
+      try {
+        const options = await fetchStorefrontPaymentOptions();
+        if (ignore) return;
+        setPaymentOptions(options);
+        setPayment((current) => (options.some((option) => option.id === current) ? current : options[0]?.id ?? current));
+      } catch {
+        if (!ignore) setPaymentOptions([]);
+      } finally {
+        if (!ignore) setPaymentOptionsLoading(false);
+      }
+    }
+
+    loadPaymentOptions();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const setField = (key: keyof FormData) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -125,16 +154,21 @@ export default function CheckoutPage() {
     if (!form.name.trim()) errs.name = t('checkout.validation.nameRequired');
     if (!form.province) errs.province = t('checkout.validation.provinceRequired');
     if (!form.city.trim()) errs.city = t('checkout.validation.cityRequired');
-    if (!form.zip.trim()) errs.zip = t('checkout.validation.zipRequired');
-    if (!form.street1.trim()) errs.street1 = t('checkout.validation.streetRequired');
-    if (payment === 'card') {
+    if (!form.zip.trim()) errs.zip = t('checkout.validation.postalRequired');
+    if (!form.street1.trim()) errs.street1 = t('checkout.validation.addressRequired');
+    if (paymentOptionsLoading) {
+      setSubmitError(t('checkout.payment.loading'));
+    } else if (paymentUnavailable) {
+      setSubmitError(t('checkout.validation.paymentUnavailable'));
+    }
+    if (!paymentBlocked && payment === 'card') {
       if (!cardData.name.trim()) errs.name = t('checkout.validation.cardNameRequired');
       if (!cardData.number.trim()) errs.number = t('checkout.validation.cardNumberRequired');
-      if (!cardData.expiry.trim()) errs.expiry = t('checkout.validation.cardExpiryRequired');
-      if (!cardData.cvv.trim()) errs.cvv = t('checkout.validation.cardCvvRequired');
+      if (!cardData.expiry.trim()) errs.expiry = t('checkout.validation.expiryRequired');
+      if (!cardData.cvv.trim()) errs.cvv = t('checkout.validation.cvvRequired');
     }
     setErrors(errs);
-    return Object.keys(errs).length === 0;
+    return Object.keys(errs).length === 0 && !paymentBlocked;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -172,6 +206,11 @@ export default function CheckoutPage() {
         note: form.note,
       });
 
+      if (result.redirectUrl) {
+        window.location.assign(result.redirectUrl);
+        return;
+      }
+
       navigate({ type: 'order-success', orderId: result.orderId, orderNumber: result.orderNumber });
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : t('checkout.validation.submitFailed'));
@@ -194,14 +233,15 @@ export default function CheckoutPage() {
           {t('checkout.backToCart')}
         </button>
 
-        {/* Dev mode notice */}
-        <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-2xl px-5 py-4 mb-6">
-          <AlertTriangle size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-800">
-            <span className="font-black">{t('checkout.testModeTitle')}</span>{' '}{t('checkout.testModeDesc')}
-            <span className="font-semibold"> {t('checkout.testModeWarn')}</span>
+        {devTestPaymentEnabled && (
+          <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-2xl px-5 py-4 mb-6">
+            <AlertTriangle size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-800">
+              <span className="font-black">{t('checkout.testModeTitle')}</span>{' '}{t('checkout.testModeDesc')}
+              <span className="font-semibold"> {t('checkout.testModeWarn')}</span>
+            </div>
           </div>
-        </div>
+        )}
 
         <form onSubmit={handleSubmit} noValidate>
           <div className="grid lg:grid-cols-[1fr_400px] gap-8 items-start">
@@ -302,6 +342,8 @@ export default function CheckoutPage() {
                     setErrors((prev) => ({ ...prev, [field]: undefined }));
                   }}
                   errors={errors}
+                  options={paymentOptions}
+                  loading={paymentOptionsLoading}
                 />
               </SectionCard>
 
@@ -334,10 +376,15 @@ export default function CheckoutPage() {
                 </div>
               )}
 
-              {/* Submit — mobile */}
+              {/* Submit – mobile */}
               <div className="lg:hidden space-y-3">
-                <SubmitButton submitting={submitting} t={t} />
-                <SecurityNote t={t} />
+                <SubmitButton
+                  submitting={submitting}
+                  disabled={paymentBlocked}
+                  disabledLabel={paymentOptionsLoading ? t('checkout.payment.loading') : undefined}
+                  t={t}
+                />
+                {devTestPaymentEnabled && <SecurityNote t={t} />}
               </div>
             </div>
 
@@ -350,8 +397,13 @@ export default function CheckoutPage() {
                 couponCode={couponCode}
               />
               <div className="hidden lg:block space-y-3">
-                <SubmitButton submitting={submitting} t={t} />
-                <SecurityNote t={t} />
+                <SubmitButton
+                  submitting={submitting}
+                  disabled={paymentBlocked}
+                  disabledLabel={paymentOptionsLoading ? t('checkout.payment.loading') : undefined}
+                  t={t}
+                />
+                {devTestPaymentEnabled && <SecurityNote t={t} />}
               </div>
             </div>
           </div>
@@ -361,13 +413,24 @@ export default function CheckoutPage() {
   );
 }
 
-function SubmitButton({ submitting, t }: { submitting: boolean; t: (key: string, params?: Record<string, string | number>) => string }) {
+function SubmitButton({
+  submitting,
+  disabled = false,
+  disabledLabel,
+  t,
+}: {
+  submitting: boolean;
+  disabled?: boolean;
+  disabledLabel?: string;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const isDisabled = submitting || disabled;
   return (
     <button
       type="submit"
-      disabled={submitting}
+      disabled={isDisabled}
       className={`w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl font-black text-base transition-all duration-200 shadow-xl ${
-        submitting
+        isDisabled
           ? 'bg-slate-400 text-white cursor-not-allowed'
           : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white hover:-translate-y-0.5 hover:shadow-blue-300/50 active:translate-y-0'
       }`}
@@ -383,7 +446,7 @@ function SubmitButton({ submitting, t }: { submitting: boolean; t: (key: string,
       ) : (
         <>
           <Lock size={17} />
-          {t('checkout.confirmPay')}
+          {disabled ? disabledLabel ?? t('checkout.payment.unavailableTitle') : t('checkout.confirmPay')}
         </>
       )}
     </button>

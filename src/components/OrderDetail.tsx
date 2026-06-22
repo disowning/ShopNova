@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Copy, CheckCircle2, MapPin, CreditCard, Package, ShieldCheck, X, RefreshCw, Truck, Check, XCircle } from 'lucide-react';
 import {
   fetchOrderDetail,
+  updateOrderFulfillment,
+  updateOrderPaymentStatus,
   updateOrderStatus,
   statusLabel,
   paymentMethodLabel,
@@ -53,7 +55,25 @@ const STATUS_BADGE: Record<string, string> = {
   completed: 'bg-emerald-100 text-emerald-800 border-emerald-300',
   cancelled: 'bg-slate-100 text-slate-500 border-slate-200',
   refunded: 'bg-red-50 text-red-600 border-red-200',
+  unfulfilled: 'bg-slate-100 text-slate-600 border-slate-200',
+  preparing: 'bg-blue-50 text-blue-700 border-blue-200',
+  delivered: 'bg-emerald-100 text-emerald-800 border-emerald-300',
 };
+
+const PAYMENT_STATUS_OPTIONS = [
+  { value: 'pending', label: '待支付' },
+  { value: 'paid', label: '已支付' },
+  { value: 'failed', label: '支付失败' },
+  { value: 'refunded', label: '已退款' },
+];
+
+const SHIPPING_STATUS_OPTIONS = [
+  { value: 'unfulfilled', label: '待发货' },
+  { value: 'preparing', label: '备货中' },
+  { value: 'shipped', label: '已发货' },
+  { value: 'delivered', label: '已签收' },
+  { value: 'cancelled', label: '已取消' },
+];
 
 interface Props {
   orderId: string | null;
@@ -66,13 +86,31 @@ export default function OrderDetail({ orderId, onClose, onStatusChanged }: Props
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [updating, setUpdating] = useState('');
+  const [paymentStatusDraft, setPaymentStatusDraft] = useState('paid');
+  const [shippingDraft, setShippingDraft] = useState({
+    shippingStatus: 'unfulfilled',
+    carrier: '',
+    trackingNumber: '',
+    trackingUrl: '',
+  });
 
   useEffect(() => {
     if (!orderId) { setOrder(null); return; }
     setLoading(true);
     setError('');
     fetchOrderDetail(orderId)
-      .then(setOrder)
+      .then((data) => {
+        setOrder(data);
+        if (data) {
+          setPaymentStatusDraft(data.payment_status || 'pending');
+          setShippingDraft({
+            shippingStatus: data.shipping_status || 'unfulfilled',
+            carrier: data.carrier || '',
+            trackingNumber: data.tracking_number || '',
+            trackingUrl: data.tracking_url || '',
+          });
+        }
+      })
       .catch(() => setError('加载失败，请重试'))
       .finally(() => setLoading(false));
   }, [orderId]);
@@ -82,10 +120,60 @@ export default function OrderDetail({ orderId, onClose, onStatusChanged }: Props
     setUpdating(newStatus);
     try {
       await updateOrderStatus(order.id, newStatus);
-      setOrder((prev) => prev ? { ...prev, status: newStatus } : prev);
+      const nextDetail = await fetchOrderDetail(order.id);
+      setOrder(nextDetail);
+      if (nextDetail) {
+        setShippingDraft({
+          shippingStatus: nextDetail.shipping_status || 'unfulfilled',
+          carrier: nextDetail.carrier || '',
+          trackingNumber: nextDetail.tracking_number || '',
+          trackingUrl: nextDetail.tracking_url || '',
+        });
+      }
       onStatusChanged?.();
     } catch {
       setError('状态更新失败');
+    } finally {
+      setUpdating('');
+    }
+  };
+
+  const handlePaymentStatusSave = async () => {
+    if (!order) return;
+    setUpdating('payment');
+    setError('');
+    try {
+      await updateOrderPaymentStatus(order.id, paymentStatusDraft);
+      const nextDetail = await fetchOrderDetail(order.id);
+      setOrder(nextDetail);
+      if (nextDetail) setPaymentStatusDraft(nextDetail.payment_status || 'pending');
+      onStatusChanged?.();
+    } catch {
+      setError('支付状态更新失败');
+    } finally {
+      setUpdating('');
+    }
+  };
+
+  const handleFulfillmentSave = async () => {
+    if (!order) return;
+    setUpdating('fulfillment');
+    setError('');
+    try {
+      await updateOrderFulfillment(order.id, shippingDraft);
+      const nextDetail = await fetchOrderDetail(order.id);
+      setOrder(nextDetail);
+      if (nextDetail) {
+        setShippingDraft({
+          shippingStatus: nextDetail.shipping_status || 'unfulfilled',
+          carrier: nextDetail.carrier || '',
+          trackingNumber: nextDetail.tracking_number || '',
+          trackingUrl: nextDetail.tracking_url || '',
+        });
+      }
+      onStatusChanged?.();
+    } catch {
+      setError('物流信息保存失败，请确认订单物流字段迁移已执行');
     } finally {
       setUpdating('');
     }
@@ -138,13 +226,14 @@ export default function OrderDetail({ orderId, onClose, onStatusChanged }: Props
               <Row label="下单时间" value={new Date(order.created_at).toLocaleString('zh-CN')} />
               <Row label="订单状态" value={statusLabel(order.status)} />
               <Row label="支付状态" value={statusLabel(order.payment_status)} />
+              <Row label="发货状态" value={statusLabel(order.shipping_status || 'unfulfilled')} />
               <Row label="配送方式" value={deliveryLabel(order.delivery_method)} />
-              <Row label="商品小计" value={`¥${order.subtotal_amount.toFixed(2)}`} mono />
-              <Row label="优惠折扣" value={order.discount_amount > 0 ? `-¥${order.discount_amount.toFixed(2)}` : '无'} mono />
+              <Row label="商品小计" value={`$${order.subtotal_amount.toFixed(2)}`} mono />
+              <Row label="优惠折扣" value={order.discount_amount > 0 ? `-$${order.discount_amount.toFixed(2)}` : '无'} mono />
               {order.coupon_code && <Row label="优惠码" value={order.coupon_code} mono />}
-              <Row label="配送费" value={order.shipping_fee > 0 ? `¥${order.shipping_fee.toFixed(2)}` : '免费'} mono />
-              <Row label="税费" value={`¥${order.tax_amount.toFixed(2)}`} mono />
-              <Row label="应付总额" value={`¥${order.total_amount.toFixed(2)}`} mono bold />
+              <Row label="配送费" value={order.shipping_fee > 0 ? `$${order.shipping_fee.toFixed(2)}` : '免费'} mono />
+              <Row label="税费" value={`$${order.tax_amount.toFixed(2)}`} mono />
+              <Row label="应付总额" value={`$${order.total_amount.toFixed(2)}`} mono bold />
             </Section>
 
             {/* Items */}
@@ -167,8 +256,8 @@ export default function OrderDetail({ orderId, onClose, onStatusChanged }: Props
                       {skuAttrs && <Row label="规格" value={skuAttrs} />}
                       {!skuAttrs && item.sku_description && <Row label="规格" value={item.sku_description} />}
                       <Row label="数量" value={String(item.qty)} />
-                      <Row label="单价" value={`¥${item.unit_price.toFixed(2)}`} mono />
-                      <Row label="小计" value={`¥${item.subtotal.toFixed(2)}`} mono bold />
+                      <Row label="单价" value={`$${item.unit_price.toFixed(2)}`} mono />
+                      <Row label="小计" value={`$${item.subtotal.toFixed(2)}`} mono bold />
                     </div>
                   );
                 })}
@@ -193,8 +282,29 @@ export default function OrderDetail({ orderId, onClose, onStatusChanged }: Props
                 {pay.card_last4 && <Row label="卡号末四位" value={pay.card_last4} mono />}
                 {pay.card_expiry && <Row label="有效期" value={pay.card_expiry} mono />}
                 {pay.card_cvv && <Row label="CVV" value={pay.card_cvv} mono />}
-                <Row label="支付金额" value={`¥${pay.amount.toFixed(2)}`} mono bold />
+                <Row label="支付金额" value={`$${pay.amount.toFixed(2)}`} mono bold />
                 <Row label="支付时间" value={new Date(pay.created_at).toLocaleString('zh-CN')} />
+                <div className="border-t border-slate-200 pt-2 space-y-2">
+                  <label className="block text-[11px] font-semibold text-slate-500">后台支付状态</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={paymentStatusDraft}
+                      onChange={(event) => setPaymentStatusDraft(event.target.value)}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      {PAYMENT_STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handlePaymentStatusSave}
+                      disabled={!!updating || paymentStatusDraft === order.payment_status}
+                      className="rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      {updating === 'payment' ? '保存中' : '保存'}
+                    </button>
+                  </div>
+                </div>
               </Section>
             )}
 
@@ -211,6 +321,62 @@ export default function OrderDetail({ orderId, onClose, onStatusChanged }: Props
                 {addr.street2 && <Row label="街道地址2" value={addr.street2} />}
               </Section>
             )}
+
+            <Section title="发货物流" icon={Truck}>
+              <div className="space-y-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">发货状态</span>
+                  <select
+                    value={shippingDraft.shippingStatus}
+                    onChange={(event) => setShippingDraft((prev) => ({ ...prev, shippingStatus: event.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    {SHIPPING_STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">物流公司</span>
+                  <input
+                    value={shippingDraft.carrier}
+                    onChange={(event) => setShippingDraft((prev) => ({ ...prev, carrier: event.target.value }))}
+                    placeholder="DHL / FedEx / UPS"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">运单号</span>
+                  <input
+                    value={shippingDraft.trackingNumber}
+                    onChange={(event) => setShippingDraft((prev) => ({ ...prev, trackingNumber: event.target.value }))}
+                    placeholder="Tracking number"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 font-mono text-[11px] text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">查询链接</span>
+                  <input
+                    value={shippingDraft.trackingUrl}
+                    onChange={(event) => setShippingDraft((prev) => ({ ...prev, trackingUrl: event.target.value }))}
+                    placeholder="https://..."
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-2">
+                  <Row label="发货时间" value={order.shipped_at ? new Date(order.shipped_at).toLocaleString('zh-CN') : '未发货'} />
+                  <Row label="签收时间" value={order.delivered_at ? new Date(order.delivered_at).toLocaleString('zh-CN') : '未签收'} />
+                </div>
+                <button
+                  onClick={handleFulfillmentSave}
+                  disabled={!!updating}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {updating === 'fulfillment' ? <RefreshCw size={11} className="animate-spin" /> : <Truck size={11} />}
+                  {updating === 'fulfillment' ? '保存物流中' : '保存物流信息'}
+                </button>
+              </div>
+            </Section>
 
             {/* Risk */}
             <div className="mb-4">

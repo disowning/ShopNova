@@ -17,6 +17,7 @@ export type PageType =
   | { type: 'privacy' }
   | { type: 'terms' }
   | { type: 'cookies' }
+  | { type: 'payment-security' }
   | { type: 'checkout' }
   | { type: 'order-success'; orderId: string; orderNumber: string }
   | { type: 'login' }
@@ -62,8 +63,8 @@ function skuKey(selectedSKUs: Record<string, string>) {
   return Object.entries(selectedSKUs).sort().map(([k, v]) => `${k}:${v}`).join('|');
 }
 
-export function StoreProvider({ children }: { children: ReactNode }) {
-  const [page, setPage] = useState<PageType>({ type: 'home' });
+export function StoreProvider({ children, initialPage }: { children: ReactNode; initialPage?: PageType }) {
+  const [page, setPage] = useState<PageType>(initialPage ?? { type: 'home' });
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [wishlist, setWishlist] = useState<string[]>([]);

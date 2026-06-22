@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
-import { getSessionUser, logout as logoutService, type AuthUser } from '../lib/authService';
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { getSessionUser, logout as logoutService, refreshSessionUser, type AuthUser } from '../lib/authService';
 
 interface AuthState {
   user: AuthUser | null;
@@ -13,6 +13,20 @@ const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<AuthUser | null>(() => getSessionUser());
+
+  useEffect(() => {
+    let active = true;
+    refreshSessionUser()
+      .then((sessionUser) => {
+        if (active) setUserState(sessionUser);
+      })
+      .catch(() => {
+        if (active) setUserState(getSessionUser());
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const setUser = useCallback((u: AuthUser | null) => {
     setUserState(u);

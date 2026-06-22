@@ -4,6 +4,9 @@ import { fetchFlashSaleProducts } from '../lib/productService';
 import type { Product } from './types';
 import { useStore } from './StoreContext';
 import { useT } from '../i18n';
+import { useSiteSettings } from './SiteSettingsContext';
+import { useCmsContent } from './CmsContentContext';
+import { editableAttrs } from './visualEditor';
 
 function useCountdown(initial: { h: number; m: number; s: number }) {
   const [time, setTime] = useState(initial);
@@ -27,11 +30,13 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
 function FlashProductCard({ product }: { product: Product }) {
   const { navigate, addToCart } = useStore();
   const { t } = useT();
+  const { text, storeSwitches } = useSiteSettings();
   const [added, setAdded] = useState(false);
   const discount = product.originalPrice > product.price
     ? Math.round((1 - product.price / product.originalPrice) * 100)
     : 0;
   const soldPct = Math.min(90, Math.round((product.sold / (product.sold + 300)) * 100));
+  const currencySymbol = text('currencySymbol');
 
   return (
     <div
@@ -45,15 +50,15 @@ function FlashProductCard({ product }: { product: Product }) {
         <div className="text-[10px] text-rose-500 font-bold mb-1">{t('flashSale.discount', { pct: discount })}</div>
         <div className="text-sm font-bold text-slate-900 truncate mb-1">{product.name}</div>
         <div className="flex items-baseline gap-1.5 mb-2">
-          <span className="text-lg font-black text-slate-900">¥{product.price}</span>
-          <span className="text-xs text-slate-400 line-through">¥{product.originalPrice}</span>
+          <span className="text-lg font-black text-slate-900">{currencySymbol}{product.price}</span>
+          <span className="text-xs text-slate-400 line-through">{currencySymbol}{product.originalPrice}</span>
         </div>
-        <div className="mb-2">
+        {storeSwitches.showSalesCount && <div className="mb-2">
           <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
             <div className="h-full bg-gradient-to-r from-rose-500 to-orange-400 rounded-full" style={{ width: `${soldPct}%` }} />
           </div>
           <div className="text-[10px] text-slate-400 mt-0.5">{t('flashSale.soldPct', { pct: soldPct })}</div>
-        </div>
+        </div>}
       </div>
       <button
         onClick={(e) => {
@@ -75,9 +80,22 @@ function FlashProductCard({ product }: { product: Product }) {
 export default function FlashSaleSection() {
   const { navigate } = useStore();
   const { t, locale } = useT();
+  const { field } = useCmsContent();
   const time = useCountdown({ h: 8, m: 24, s: 36 });
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const tag = field('home-flash-sale', 'tag', t('flashSale.tag'));
+  const title = field('home-flash-sale', 'title', t('flashSale.title'));
+  const subtitle = field('home-flash-sale', 'subtitle', t('flashSale.subtitle'));
+  const timerLabel = field('home-flash-sale', 'timerLabel', t('flashSale.endsIn'));
+  const ctaText = field('home-flash-sale', 'ctaText', t('flashSale.viewAll'));
+  const edit = (fieldKey: string, label: string) => editableAttrs({
+    entryId: 'home.flashSale',
+    source: 'cms',
+    itemId: 'home-flash-sale',
+    fieldKey,
+    label,
+  });
 
   useEffect(() => {
     setLoading(true);
@@ -93,14 +111,14 @@ export default function FlashSaleSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-end justify-between mb-10">
           <div>
-            <div className="text-xs font-bold text-rose-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-              <Zap size={12} /> {t('flashSale.tag')}
+            <div className="text-xs font-bold text-rose-500 uppercase tracking-widest mb-2 flex items-center gap-1.5" {...edit('tag', '首页限时抢购标签')}>
+              <Zap size={12} /> {tag}
             </div>
-            <h2 className="text-3xl font-black text-slate-900">{t('flashSale.title')}</h2>
-            <p className="text-sm text-slate-500 mt-2">{t('flashSale.subtitle')}</p>
+            <h2 className="text-3xl font-black text-slate-900" {...edit('title', '首页限时抢购标题')}>{title}</h2>
+            <p className="text-sm text-slate-500 mt-2" {...edit('subtitle', '首页限时抢购说明')}>{subtitle}</p>
           </div>
-          <button onClick={() => navigate({ type: 'listing', title: t('flashSale.title'), filter: 'flashSale' })} className="flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors group">
-            {t('flashSale.viewAll')} <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+          <button onClick={() => navigate({ type: 'listing', title, filter: 'flashSale' })} className="flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors group">
+            <span {...edit('ctaText', '首页限时抢购按钮文案')}>{ctaText}</span> <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
           </button>
         </div>
 
@@ -122,7 +140,7 @@ export default function FlashSaleSection() {
             <div className="relative">
               <div className="flex items-center gap-1 mb-5">
                 <Timer size={13} className="text-slate-400" />
-                <span className="text-xs text-slate-400 font-medium">{t('flashSale.endsIn')}</span>
+                <span className="text-xs text-slate-400 font-medium" {...edit('timerLabel', '首页限时抢购倒计时标签')}>{timerLabel}</span>
                 {[pad(time.h), pad(time.m), pad(time.s)].map((unit, i) => (
                   <span key={i} className="flex items-center gap-1">
                     <span className="bg-white/10 backdrop-blur-sm text-white font-black text-lg w-10 h-10 flex items-center justify-center rounded-xl border border-white/10">{unit}</span>
@@ -131,10 +149,10 @@ export default function FlashSaleSection() {
                 ))}
               </div>
               <button
-                onClick={() => navigate({ type: 'listing', title: t('flashSale.title'), filter: 'flashSale' })}
+                onClick={() => navigate({ type: 'listing', title, filter: 'flashSale' })}
                 className="flex items-center gap-2 bg-rose-500 hover:bg-rose-400 text-white font-bold px-6 py-3 rounded-xl transition-all active:scale-95 shadow-lg shadow-rose-500/30"
               >
-                <Zap size={15} /> {t('flashSale.buyNow')} <ArrowRight size={14} />
+                <Zap size={15} /> <span {...edit('ctaText', '首页限时抢购按钮文案')}>{ctaText}</span> <ArrowRight size={14} />
               </button>
             </div>
           </div>

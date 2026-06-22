@@ -2,13 +2,24 @@ import { supabase } from './supabase';
 import type { Locale } from '../i18n';
 import zhCN from '../i18n/locales/zh-CN.json';
 import { getSessionUser } from './authService';
-import { DEFAULT_STORE_FORM, type StoreForm } from './siteSettings';
+import { fetchAdminCmsContent, mergeCmsContent, type CmsContentGroup, type CmsContentState } from './cmsContent';
+import {
+  DEFAULT_FOOTER_LINK_SECTIONS,
+  DEFAULT_HEADER_NAV_LINKS,
+  DEFAULT_STORE_FORM,
+  fetchAdminSiteSettings,
+} from './siteSettings';
 
-export type TranslatableEntity = 'product' | 'category' | 'tag' | 'ui' | 'store' | 'page';
+export type TranslatableEntity = 'product' | 'category' | 'tag' | 'ui' | 'store' | 'page' | 'cms';
 type CatalogEntity = 'product' | 'category' | 'tag';
 export type TranslationExportMode = 'all' | 'missing' | 'outdated' | 'missing_or_outdated';
+export type TranslationSourceMap = Record<string, Record<string, string>>;
 
 export const SOURCE_LOCALE: Locale = 'zh-CN';
+const SUPPORTED_LOCALES: Locale[] = ['zh-CN', 'zh-TW', 'en-US', 'ja-JP', 'ko-KR'];
+const PACKAGE_ITEM_KEYS = ['products', 'categories', 'tags', 'ui', 'store', 'pages', 'cms'] as const;
+const TRANSLATION_UPSERT_CHUNK_SIZE = 500;
+const ALLOWED_TRANSLATION_ENTITY_TYPES = ['product', 'category', 'tag', 'ui', 'store', 'page', 'cms'] as const;
 
 export const TRANSLATABLE_FIELDS: Record<CatalogEntity, string[]> = {
   product: [
@@ -60,7 +71,17 @@ export interface TranslationPackage {
     ui?: TranslationPackageItem[];
     store?: TranslationPackageItem[];
     pages?: TranslationPackageItem[];
+    cms?: TranslationPackageItem[];
   };
+}
+
+export interface TranslationBatchPackage {
+  version: 1;
+  kind: 'shopnova_translation_batch';
+  sourceLocale: Locale;
+  exportedAt: string;
+  mode: TranslationExportMode;
+  packages: TranslationPackage[];
 }
 
 export interface TranslationExportOptions {
@@ -72,7 +93,16 @@ export interface TranslationExportOptions {
   includeUi?: boolean;
   includeStore?: boolean;
   includePages?: boolean;
+  includeCms?: boolean;
+  uiSections?: readonly string[];
+  storeSections?: readonly string[];
+  pageSections?: readonly string[];
+  cmsGroups?: readonly CmsContentGroup[];
   mode?: TranslationExportMode;
+}
+
+export interface TranslationBatchExportOptions extends Omit<TranslationExportOptions, 'targetLocale'> {
+  targetLocales: Locale[];
 }
 
 interface SourceRecord {
@@ -139,11 +169,10 @@ export const UI_SOURCE_SECTIONS = [
 ] as const;
 
 export const PAGE_SOURCE_SECTIONS = ['home', 'cookie', 'aboutPages', 'customerService', 'legal'] as const;
+export const STORE_PROFILE_SECTION = 'profile';
+export const STORE_NAVIGATION_SECTION = 'navigation';
 export const STORE_SOURCE_SECTIONS = ['announcement', 'footer'] as const;
-
-type StoreSettingsData = {
-  storeForm?: Partial<StoreForm>;
-};
+export const CMS_SOURCE_GROUPS: readonly CmsContentGroup[] = ['home', 'service', 'about', 'policy', 'marketing'];
 
 function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
@@ -204,9 +233,20 @@ export function computeSourceHash(text: string) {
   return (hash >>> 0).toString(36);
 }
 
-export function buildTranslationLookup(rows: ContentTranslationRow[]): TranslationLookup {
+export function isTranslationRowFresh(row: ContentTranslationRow, currentSources?: TranslationSourceMap) {
+  if (!currentSources) return true;
+
+  const sourceText = currentSources[row.entity_id]?.[row.field_name];
+  if (typeof sourceText !== 'string') return false;
+  if (!row.source_hash) return true;
+
+  return computeSourceHash(sourceText.trim()) === row.source_hash;
+}
+
+export function buildTranslationLookup(rows: ContentTranslationRow[], currentSources?: TranslationSourceMap): TranslationLookup {
   return rows.reduce<TranslationLookup>((acc, row) => {
     if (!row.translated_text) return acc;
+    if (!isTranslationRowFresh(row, currentSources)) return acc;
     if (!acc[row.entity_id]) acc[row.entity_id] = {};
     acc[row.entity_id][row.field_name] = row.translated_text;
     return acc;
@@ -236,9 +276,10 @@ export async function fetchTranslationLookup(
   entityType: TranslatableEntity,
   locale: Locale,
   entityIds: string[],
+  currentSources?: TranslationSourceMap,
 ) {
   const rows = await fetchContentTranslations(entityType, locale, entityIds);
-  return buildTranslationLookup(rows);
+  return buildTranslationLookup(rows, currentSources);
 }
 
 function addProductJsonFields(fields: Record<string, string>, row: ProductRow) {
@@ -362,28 +403,86 @@ async function fetchStoreProfileSource(): Promise<SourceRecord> {
     };
   }
 
-  const { data } = await supabase
-    .from('admin_settings')
-    .select('settings_data')
-    .eq('user_id', sessionUser.id)
-    .maybeSingle();
-
-  const settingsData = (data?.settings_data ?? {}) as StoreSettingsData;
+  const { siteSettings } = await fetchAdminSiteSettings();
   return {
     id: 'global',
     label: '店铺资料',
     fields: {
       ...DEFAULT_STORE_FORM,
-      ...settingsData.storeForm,
+      ...siteSettings.storeForm,
     },
   };
 }
 
-async function toStoreSources(): Promise<SourceRecord[]> {
-  return [
-    await fetchStoreProfileSource(),
-    ...toLocaleSectionSources(STORE_SOURCE_SECTIONS),
-  ];
+async function fetchStoreNavigationSource(): Promise<SourceRecord> {
+  const sessionUser = getSessionUser();
+  let headerNavLinks = DEFAULT_HEADER_NAV_LINKS;
+  let footerLinkSections = DEFAULT_FOOTER_LINK_SECTIONS;
+
+  if (sessionUser) {
+    const { siteSettings } = await fetchAdminSiteSettings();
+    headerNavLinks = siteSettings.headerNavLinks.length ? siteSettings.headerNavLinks : headerNavLinks;
+    footerLinkSections = siteSettings.footerLinkSections.length ? siteSettings.footerLinkSections : footerLinkSections;
+  }
+
+  const fields: Record<string, string> = {};
+  headerNavLinks.forEach((link) => {
+    addField(fields, `header.${link.id}.label`, link.label);
+  });
+  footerLinkSections.forEach((section) => {
+    addField(fields, `footer.${section.id}.title`, section.title);
+    section.links.forEach((link) => {
+      addField(fields, `footer.${section.id}.${link.id}.label`, link.label);
+    });
+  });
+
+  return {
+    id: STORE_NAVIGATION_SECTION,
+    label: '导航文案',
+    fields,
+  };
+}
+
+async function fetchCmsContentSource(): Promise<CmsContentState> {
+  const sessionUser = getSessionUser();
+  if (!sessionUser) return mergeCmsContent();
+  return fetchAdminCmsContent();
+}
+
+async function toStoreSources(sectionNames: readonly string[] = [STORE_PROFILE_SECTION, STORE_NAVIGATION_SECTION, ...STORE_SOURCE_SECTIONS]): Promise<SourceRecord[]> {
+  const sectionSet = new Set(sectionNames);
+  const sources: SourceRecord[] = [];
+
+  if (sectionSet.has(STORE_PROFILE_SECTION)) {
+    sources.push(await fetchStoreProfileSource());
+  }
+
+  if (sectionSet.has(STORE_NAVIGATION_SECTION)) {
+    sources.push(await fetchStoreNavigationSource());
+  }
+
+  sources.push(...toLocaleSectionSources(STORE_SOURCE_SECTIONS.filter((section) => sectionSet.has(section))));
+  return sources;
+}
+
+function toCmsSources(content: CmsContentState, groups: readonly CmsContentGroup[] = CMS_SOURCE_GROUPS): SourceRecord[] {
+  const groupSet = new Set(groups);
+
+  return content.items
+    .filter((item) => groupSet.has(item.group))
+    .map((item) => {
+      const fields: Record<string, string> = {};
+      item.fields.forEach((field) => {
+        addField(fields, field.key, field.value);
+      });
+
+      return {
+        id: item.id,
+        label: item.title || item.id,
+        fields,
+      };
+    })
+    .filter((record) => Object.keys(record.fields).length > 0);
 }
 
 async function fetchExistingTranslationRows(entityType: TranslatableEntity, locale: Locale, ids: string[]) {
@@ -463,6 +562,7 @@ export async function exportTranslationPackage(options: TranslationExportOptions
     options.includeUi,
     options.includeStore,
     options.includePages,
+    options.includeCms,
   ].some((value) => value !== undefined);
   const defaultCatalogIncludes = !hasExplicitIncludes;
 
@@ -473,6 +573,7 @@ export async function exportTranslationPackage(options: TranslationExportOptions
     ui: [],
     store: [],
     pages: [],
+    cms: [],
   };
 
   if (options.includeProducts ?? defaultCatalogIncludes) {
@@ -529,15 +630,19 @@ export async function exportTranslationPackage(options: TranslationExportOptions
   }
 
   if (options.includeUi ?? false) {
-    items.ui = await buildPackageItems('ui', targetLocale, toLocaleSectionSources(UI_SOURCE_SECTIONS), mode);
+    items.ui = await buildPackageItems('ui', targetLocale, toLocaleSectionSources(options.uiSections ?? UI_SOURCE_SECTIONS), mode);
   }
 
   if (options.includeStore ?? false) {
-    items.store = await buildPackageItems('store', targetLocale, await toStoreSources(), mode);
+    items.store = await buildPackageItems('store', targetLocale, await toStoreSources(options.storeSections), mode);
   }
 
   if (options.includePages ?? false) {
-    items.pages = await buildPackageItems('page', targetLocale, toLocaleSectionSources(PAGE_SOURCE_SECTIONS), mode);
+    items.pages = await buildPackageItems('page', targetLocale, toLocaleSectionSources(options.pageSections ?? PAGE_SOURCE_SECTIONS), mode);
+  }
+
+  if (options.includeCms ?? false) {
+    items.cms = await buildPackageItems('cms', targetLocale, toCmsSources(await fetchCmsContentSource(), options.cmsGroups), mode);
   }
 
   return {
@@ -550,9 +655,31 @@ export async function exportTranslationPackage(options: TranslationExportOptions
   };
 }
 
+export async function exportTranslationBatchPackage(options: TranslationBatchExportOptions): Promise<TranslationBatchPackage> {
+  const targetLocales = Array.from(new Set(options.targetLocales)).filter(isLocale);
+  if (targetLocales.length === 0) throw new Error('请至少选择一个目标语言。');
+
+  const packages = await Promise.all(
+    targetLocales.map((targetLocale) => exportTranslationPackage({
+      ...options,
+      targetLocale,
+    })),
+  );
+
+  return {
+    version: 1,
+    kind: 'shopnova_translation_batch',
+    sourceLocale: options.sourceLocale ?? SOURCE_LOCALE,
+    exportedAt: new Date().toISOString(),
+    mode: options.mode ?? 'missing_or_outdated',
+    packages,
+  };
+}
+
 function flattenPackageRows(pack: TranslationPackage) {
   const now = new Date().toISOString();
   const rows: Array<Record<string, string>> = [];
+  let skipped = 0;
   const groups: Array<[TranslatableEntity, TranslationPackageItem[]]> = [
     ['product', pack.items.products ?? []],
     ['category', pack.items.categories ?? []],
@@ -560,13 +687,17 @@ function flattenPackageRows(pack: TranslationPackage) {
     ['ui', pack.items.ui ?? []],
     ['store', pack.items.store ?? []],
     ['page', pack.items.pages ?? []],
+    ['cms', pack.items.cms ?? []],
   ];
 
   for (const [entityType, items] of groups) {
     for (const item of items) {
       for (const field of Object.keys(item.target ?? {})) {
         const translatedText = clean(item.target[field]);
-        if (!translatedText) continue;
+        if (!translatedText) {
+          skipped += 1;
+          continue;
+        }
 
         const sourceText = clean(item.source?.[field]);
         rows.push({
@@ -585,22 +716,107 @@ function flattenPackageRows(pack: TranslationPackage) {
     }
   }
 
-  return rows;
+  return { rows, skipped };
 }
 
-export async function importTranslationPackage(pack: TranslationPackage) {
-  if (pack.version !== 1) throw new Error('Unsupported translation package version.');
-  if (!pack.targetLocale || !pack.sourceLocale) throw new Error('Missing locale information.');
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
 
-  const rows = flattenPackageRows(pack);
-  if (rows.length === 0) return { imported: 0 };
+function isLocale(value: unknown): value is Locale {
+  return typeof value === 'string' && SUPPORTED_LOCALES.includes(value as Locale);
+}
 
-  const { error } = await supabase
-    .from('content_translations')
-    .upsert(rows, { onConflict: 'entity_type,entity_id,locale,field_name' });
+function validateTranslationPackage(value: unknown): TranslationPackage {
+  if (!isPlainObject(value)) throw new Error('翻译包格式不正确，请导入导出的 JSON 文件。');
+  if (value.version !== 1) throw new Error('翻译包版本不支持，请重新导出后再翻译。');
+  if (value.sourceLocale !== SOURCE_LOCALE) throw new Error('翻译包源语言必须是 zh-CN。');
+  if (!isLocale(value.targetLocale)) throw new Error('翻译包目标语言不支持。');
+  if (!isPlainObject(value.items)) throw new Error('翻译包缺少 items 内容。');
 
-  if (error) throw new Error(error.message);
-  return { imported: rows.length };
+  const itemKeys = new Set<string>(PACKAGE_ITEM_KEYS);
+  Object.entries(value.items).forEach(([key, items]) => {
+    if (!itemKeys.has(key)) throw new Error(`翻译包包含未知内容分组：${key}`);
+    if (!Array.isArray(items)) throw new Error(`翻译包分组 ${key} 必须是数组。`);
+    items.forEach((item, index) => {
+      if (!isPlainObject(item)) throw new Error(`翻译包分组 ${key} 第 ${index + 1} 项格式不正确。`);
+      if (typeof item.id !== 'string' || !item.id) throw new Error(`翻译包分组 ${key} 第 ${index + 1} 项缺少 id。`);
+      if (!isPlainObject(item.source) || !isPlainObject(item.target)) {
+        throw new Error(`翻译包分组 ${key} 第 ${index + 1} 项缺少 source 或 target。`);
+      }
+    });
+  });
+
+  return value as unknown as TranslationPackage;
+}
+
+function validateTranslationBatchPackage(value: unknown): TranslationBatchPackage {
+  if (!isPlainObject(value)) throw new Error('翻译包格式不正确，请导入导出的 JSON 文件。');
+  if (value.version !== 1 || value.kind !== 'shopnova_translation_batch') {
+    throw new Error('批量翻译包格式不正确，请重新导出后再翻译。');
+  }
+  if (value.sourceLocale !== SOURCE_LOCALE) throw new Error('批量翻译包源语言必须是 zh-CN。');
+  if (!Array.isArray(value.packages) || value.packages.length === 0) {
+    throw new Error('批量翻译包缺少 packages 内容。');
+  }
+
+  const packages = value.packages.map(validateTranslationPackage);
+  const locales = packages.map((pack) => pack.targetLocale);
+  if (new Set(locales).size !== locales.length) {
+    throw new Error('批量翻译包里存在重复目标语言，请每个语言只保留一个包。');
+  }
+
+  return {
+    version: 1,
+    kind: 'shopnova_translation_batch',
+    sourceLocale: SOURCE_LOCALE,
+    exportedAt: typeof value.exportedAt === 'string' ? value.exportedAt : '',
+    mode: typeof value.mode === 'string' ? value.mode as TranslationExportMode : 'missing_or_outdated',
+    packages,
+  };
+}
+
+function toTranslationUpsertErrorMessage(error: { message?: string; code?: string; details?: string | null }) {
+  const message = error.message ?? '';
+  const details = error.details ?? '';
+  const combined = `${message} ${details}`;
+
+  if (combined.includes('content_translations_entity_type_check')) {
+    return [
+      '翻译表的数据库约束还是旧版本，当前数据库还不允许写入新的翻译类型。',
+      `当前项目需要允许这些类型：${ALLOWED_TRANSLATION_ENTITY_TYPES.join(', ')}。`,
+      '请先执行最新 Supabase migration：20260526000100_refresh_content_translation_entity_type_constraint.sql。',
+    ].join(' ');
+  }
+
+  if (error.code === '23505' || combined.toLowerCase().includes('duplicate key')) {
+    return '翻译数据唯一键冲突，请刷新后重试。';
+  }
+
+  return message || '写入翻译数据失败。';
+}
+
+export async function importTranslationPackage(rawPack: unknown) {
+  const packs = isPlainObject(rawPack) && rawPack.kind === 'shopnova_translation_batch'
+    ? validateTranslationBatchPackage(rawPack).packages
+    : [validateTranslationPackage(rawPack)];
+
+  const flattened = packs.map(flattenPackageRows);
+  const rows = flattened.flatMap((item) => item.rows);
+  const skipped = flattened.reduce((sum, item) => sum + item.skipped, 0);
+  const locales = packs.map((pack) => pack.targetLocale);
+  if (rows.length === 0) return { imported: 0, skipped, locales };
+
+  for (let index = 0; index < rows.length; index += TRANSLATION_UPSERT_CHUNK_SIZE) {
+    const chunk = rows.slice(index, index + TRANSLATION_UPSERT_CHUNK_SIZE);
+    const { error } = await supabase
+      .from('content_translations')
+      .upsert(chunk, { onConflict: 'entity_type,entity_id,locale,field_name' });
+
+    if (error) throw new Error(toTranslationUpsertErrorMessage(error));
+  }
+
+  return { imported: rows.length, skipped, locales };
 }
 
 export async function getTranslationStats(targetLocale: Locale, options: Omit<TranslationExportOptions, 'targetLocale' | 'mode'> = {}) {
@@ -617,6 +833,7 @@ export async function getTranslationStats(targetLocale: Locale, options: Omit<Tr
     ...(pack.items.ui ?? []),
     ...(pack.items.store ?? []),
     ...(pack.items.pages ?? []),
+    ...(pack.items.cms ?? []),
   ];
   let total = 0;
   let translated = 0;

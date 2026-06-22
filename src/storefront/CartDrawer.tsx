@@ -2,15 +2,19 @@ import { X, ShoppingBag, Plus, Minus, Trash2, ArrowRight, Package } from 'lucide
 import { useStore } from './StoreContext';
 import { useAuth } from './AuthContext';
 import { useT } from '../i18n';
+import { useSiteSettings } from './SiteSettingsContext';
 
 export default function CartDrawer() {
   const { cart, cartOpen, setCartOpen, removeFromCart, updateQty, navigate } = useStore();
   const { isLoggedIn } = useAuth();
   const { t } = useT();
+  const { text } = useSiteSettings();
 
   const subtotal = cart.reduce((a, item) => a + item.effectivePrice * item.qty, 0);
   const totalItems = cart.reduce((a, item) => a + item.qty, 0);
-  const freeShipping = subtotal >= 299;
+  const currencySymbol = text('currencySymbol');
+  const freeShippingThreshold = Number(text('freeShippingThreshold')) || 299;
+  const freeShipping = subtotal >= freeShippingThreshold;
 
   if (!cartOpen) return null;
 
@@ -78,7 +82,7 @@ export default function CartDrawer() {
                     </div>
                     {skuDesc && <div className="text-xs text-slate-400 mt-0.5">{skuDesc}</div>}
                     <div className="flex items-center justify-between mt-2">
-                      <span className="text-base font-black text-slate-900">¥{item.effectivePrice}</span>
+                      <span className="text-base font-black text-slate-900">{currencySymbol}{item.effectivePrice}</span>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => updateQty(item.product.id, item.selectedSKUs, item.qty - 1)}
@@ -117,11 +121,11 @@ export default function CartDrawer() {
               <div className="flex items-center gap-2 text-xs">
                 <Package size={13} className="text-blue-500 flex-shrink-0" />
                 <div className="flex-1">
-                  <span className="text-slate-500">{t('cart.freeShippingHint', { amount: `¥${(299 - subtotal).toFixed(0)}` })}</span>
+                  <span className="text-slate-500">{t('cart.freeShippingHint', { amount: `${currencySymbol}${(freeShippingThreshold - subtotal).toFixed(0)}` })}</span>
                   <div className="mt-1 h-1.5 bg-slate-100 rounded-full">
                     <div
                       className="h-1.5 bg-blue-500 rounded-full transition-all"
-                      style={{ width: `${Math.min((subtotal / 299) * 100, 100)}%` }}
+                      style={{ width: `${Math.min((subtotal / freeShippingThreshold) * 100, 100)}%` }}
                     />
                   </div>
                 </div>
@@ -136,7 +140,7 @@ export default function CartDrawer() {
 
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">{t('cart.subtotal', { count: totalItems })}</span>
-              <span className="text-xl font-black text-slate-900">¥{subtotal.toFixed(2)}</span>
+              <span className="text-xl font-black text-slate-900">{currencySymbol}{subtotal.toFixed(2)}</span>
             </div>
             <button
               onClick={() => { setCartOpen(false); navigate(isLoggedIn ? { type: 'checkout' } : { type: 'login' }); }}

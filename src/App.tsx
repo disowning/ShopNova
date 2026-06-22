@@ -10,6 +10,9 @@ import OrderManagement from './pages/OrderManagement';
 import ProductManagement from './pages/ProductManagement';
 import CategoryManagement from './pages/CategoryManagement';
 import TagManagement from './pages/TagManagement';
+import MediaManagement from './pages/MediaManagement';
+import ContentManagement from './pages/ContentManagement';
+import SiteConfig from './pages/SiteConfig';
 import TranslationManagement from './pages/TranslationManagement';
 import CustomerManagement from './pages/CustomerManagement';
 import PaymentInfo from './pages/PaymentInfo';
@@ -17,13 +20,34 @@ import RiskOrders from './pages/RiskOrders';
 import DataAnalysis from './pages/DataAnalysis';
 import Settings from './pages/Settings';
 import StoreFront from './storefront/StoreFront';
-import { getSessionUser, login as adminLogin } from './lib/authService';
+import { getSessionUser, login as adminLogin, logout as logoutService } from './lib/authService';
+import type { DashboardFilters } from './lib/adminService';
 
 const showDetailPanel: Page[] = ['dashboard', 'orders'];
 
+function formatDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getDefaultDashboardFilters(): DashboardFilters {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return {
+    dateFrom: formatDateInput(start),
+    dateTo: formatDateInput(end),
+    status: '',
+    paymentMethod: '',
+    search: '',
+  };
+}
+
 // ─── Admin-guarded admin panel ────────────────────────────────────────────────
 
-function AdminLoginGate({ onLogin }: { onLogin: () => void }) {
+function AdminLoginGate({ onLogin, onBack }: { onLogin: () => void; onBack: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -78,6 +102,15 @@ function AdminLoginGate({ onLogin }: { onLogin: () => void }) {
             </button>
           </form>
         </div>
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-xs font-semibold text-slate-500 transition-colors hover:text-slate-300"
+          >
+            返回商城
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -85,15 +118,25 @@ function AdminLoginGate({ onLogin }: { onLogin: () => void }) {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-function Dashboard({ onSelect, selectedId, refreshKey }: { onSelect: (id: string) => void; selectedId: string | null; refreshKey: number }) {
+function Dashboard({
+  onSelect,
+  selectedId,
+  refreshKey,
+  filters,
+}: {
+  onSelect: (id: string) => void;
+  selectedId: string | null;
+  refreshKey: number;
+  filters: DashboardFilters;
+}) {
   return (
     <div className="space-y-4">
-      <StatCards key={refreshKey} />
+      <StatCards key={refreshKey} filters={filters} />
       <div className="grid grid-cols-5 gap-4">
-        <div className="col-span-3"><TrendChart key={refreshKey} /></div>
-        <div className="col-span-2"><DonutChart key={refreshKey} /></div>
+        <div className="col-span-3"><TrendChart key={refreshKey} filters={filters} /></div>
+        <div className="col-span-2"><DonutChart key={refreshKey} filters={filters} /></div>
       </div>
-      <OrderTable onSelect={onSelect} selectedId={selectedId} refreshKey={refreshKey} />
+      <OrderTable onSelect={onSelect} selectedId={selectedId} refreshKey={refreshKey} filters={filters} />
     </div>
   );
 }
@@ -101,10 +144,12 @@ function Dashboard({ onSelect, selectedId, refreshKey }: { onSelect: (id: string
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const isVisualEditorFrame = new URLSearchParams(window.location.search).get('visual-editor') === '1';
   const [mode, setMode] = useState<'admin' | 'store'>('store');
   const [page, setPage] = useState<Page>('dashboard');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [dashboardFilters, setDashboardFilters] = useState<DashboardFilters>(() => getDefaultDashboardFilters());
 
   // Admin auth: check session for admin role
   const [adminAuthed, setAdminAuthed] = useState(() => {
@@ -116,6 +161,16 @@ export default function App() {
 
   const handleSelectOrder = useCallback((id: string) => {
     setSelectedOrderId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const handleOpenCustomerOrder = useCallback((id: string) => {
+    setPage('orders');
+    setSelectedOrderId(id);
+  }, []);
+
+  const handleOpenRiskOrder = useCallback((id: string) => {
+    setPage('orders');
+    setSelectedOrderId(id);
   }, []);
 
   const handleCloseDetail = useCallback(() => setSelectedOrderId(null), []);
@@ -131,32 +186,58 @@ export default function App() {
     setAdminAuthed(true);
   }, []);
 
+  const handleOpenAdmin = useCallback(() => {
+    const u = getSessionUser();
+    setAdminAuthed(u?.role === 'admin');
+    setMode('admin');
+  }, []);
+
+  const handleOpenStore = useCallback(() => {
+    setMode('store');
+  }, []);
+
+  const handleOpenSettings = useCallback(() => {
+    setPage('settings');
+    setSelectedOrderId(null);
+  }, []);
+
+  const handleAdminLogout = useCallback(() => {
+    logoutService();
+    setAdminAuthed(false);
+    setSelectedOrderId(null);
+    setMode('store');
+  }, []);
+
+  const handleDashboardFilterChange = useCallback((patch: Partial<DashboardFilters>) => {
+    setDashboardFilters((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const handleDashboardFilterReset = useCallback(() => {
+    setDashboardFilters(getDefaultDashboardFilters());
+  }, []);
+
+  if (isVisualEditorFrame) {
+    return <StoreFront editorMode />;
+  }
+
   return (
     <>
-      {/* Mode toggle */}
-      <div className="fixed bottom-6 right-6 z-[100] flex items-center bg-slate-900 rounded-full p-1 shadow-xl border border-white/10">
-        <button
-          onClick={() => setMode('store')}
-          className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${mode === 'store' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-        >
-          用户端
-        </button>
-        <button
-          onClick={() => setMode('admin')}
-          className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${mode === 'admin' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-        >
-          管理后台
-        </button>
-      </div>
-
       {mode === 'store' ? (
-        <StoreFront />
+        <StoreFront onOpenAdmin={handleOpenAdmin} />
       ) : !adminAuthed ? (
-        <AdminLoginGate onLogin={handleAdminLogin} />
+        <AdminLoginGate onLogin={handleAdminLogin} onBack={handleOpenStore} />
       ) : (
         <div className="min-h-screen bg-slate-50 font-sans">
           <Sidebar currentPage={page} onNavigate={handlePageChange} />
-          <Topbar withDetail={withDetail} />
+          <Topbar
+            withDetail={withDetail}
+            filters={dashboardFilters}
+            onFiltersChange={handleDashboardFilterChange}
+            onResetFilters={handleDashboardFilterReset}
+            onOpenStore={handleOpenStore}
+            onOpenSettings={handleOpenSettings}
+            onLogout={handleAdminLogout}
+          />
 
           {withDetail && (
             <OrderDetail
@@ -169,7 +250,12 @@ export default function App() {
           <main className={`${withDetail ? 'mr-80' : ''} ml-56 pt-14 min-h-screen transition-all duration-200`}>
             <div className="px-5 py-5">
               {page === 'dashboard' && (
-                <Dashboard onSelect={handleSelectOrder} selectedId={selectedOrderId} refreshKey={refreshKey} />
+                <Dashboard
+                  onSelect={handleSelectOrder}
+                  selectedId={selectedOrderId}
+                  refreshKey={refreshKey}
+                  filters={dashboardFilters}
+                />
               )}
               {page === 'orders' && (
                 <OrderManagement
@@ -181,10 +267,13 @@ export default function App() {
               {page === 'products' && <ProductManagement />}
               {page === 'categories' && <CategoryManagement />}
               {page === 'tags' && <TagManagement />}
+              {page === 'media' && <MediaManagement />}
+              {page === 'content' && <ContentManagement onNavigate={handlePageChange} />}
+              {page === 'site' && <SiteConfig />}
               {page === 'translations' && <TranslationManagement />}
-              {page === 'customers' && <CustomerManagement />}
+              {page === 'customers' && <CustomerManagement onSelectOrder={handleOpenCustomerOrder} />}
               {page === 'payments' && <PaymentInfo />}
-              {page === 'risk' && <RiskOrders />}
+              {page === 'risk' && <RiskOrders onSelectOrder={handleOpenRiskOrder} />}
               {page === 'analytics' && <DataAnalysis />}
               {page === 'settings' && <Settings />}
             </div>

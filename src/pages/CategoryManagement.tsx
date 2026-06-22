@@ -40,6 +40,23 @@ const GRADIENT_OPTIONS = [
   { label: '石板', value: 'from-slate-400 to-slate-600' },
 ];
 
+function slugifyCategory(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return slug || `category-${Date.now().toString(36)}`;
+}
+
+function createCategoryId(slug: string): string {
+  const base = slug.replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+  return `cat-${base || 'item'}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
 function CategoryFormModal({
   category, allCategories, onSave, onClose,
 }: {
@@ -70,9 +87,10 @@ function CategoryFormModal({
     setSaving(true);
     setError('');
 
+    const slug = form.slug.trim() || slugifyCategory(form.name);
     const payload = {
       name: form.name.trim(),
-      slug: form.slug.trim() || form.name.trim().toLowerCase().replace(/[\s\W]+/g, '-'),
+      slug,
       icon: form.icon.trim() || '📦',
       gradient: form.gradient,
       description: form.description.trim(),
@@ -84,7 +102,7 @@ function CategoryFormModal({
 
     const { error: err } = isEdit
       ? await supabase.from('product_categories').update(payload).eq('id', category!.id)
-      : await supabase.from('product_categories').insert(payload);
+      : await supabase.from('product_categories').insert({ ...payload, id: createCategoryId(slug), count: 0 });
 
     if (err) { setError(err.message); setSaving(false); return; }
     onSave();

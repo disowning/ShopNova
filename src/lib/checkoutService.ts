@@ -2,6 +2,9 @@ import { supabase } from './supabase';
 import type { CartItem } from '../storefront/StoreContext';
 import type { DeliveryMethod } from '../storefront/checkout/DeliveryMethodSelector';
 import type { PaymentMethod, CardData } from '../storefront/checkout/PaymentMethodSelector';
+import { fetchPublicCustomerRules, getMemberLevelByRules } from './customerRules';
+import { createCheckoutRiskOrder } from './riskService';
+import { fetchStorefrontPaymentOptions } from './paymentSettings';
 
 export interface CheckoutInput {
   // Auth
@@ -39,7 +42,7 @@ export interface SimulatedPaymentResult {
   gatewayResponse: Record<string, unknown>;
 }
 
-export function simulatePayment(_input: CheckoutInput): Promise<SimulatedPaymentResult> {
+export function simulatePayment(): Promise<SimulatedPaymentResult> {
   // DEV/TEST MODE: always returns success after a brief delay.
   // Replace this function body with a real payment gateway call before going live.
   return new Promise((resolve) => {
@@ -73,11 +76,69 @@ const deliveryFee: Record<DeliveryMethod, number> = {
 export interface CheckoutResult {
   orderId: string;
   orderNumber: string;
+  redirectUrl?: string;
+}
+
+async function syncCustomerOrderSummary(userId: string | undefined, orderTotal: number, isPaid: boolean) {
+  if (!userId) return;
+
+  const { data } = await supabase
+    .from('users')
+    .select('total_spend, order_count')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (!data) return;
+
+  const nextSpend = Number(data.total_spend ?? 0) + (isPaid ? orderTotal : 0);
+  const nextOrderCount = Number(data.order_count ?? 0) + 1;
+  const customerRules = await fetchPublicCustomerRules();
+
+  await supabase
+    .from('users')
+    .update({
+      total_spend: nextSpend,
+      order_count: nextOrderCount,
+      last_order_at: new Date().toISOString(),
+      member_level: getMemberLevelByRules(nextOrderCount, nextSpend, customerRules),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+}
+
+async function assertCustomerCanCheckout(userId: string | undefined) {
+  if (!userId) return;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('status')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) throw new Error('无法验证客户状态，请稍后重试。');
+  if (data?.status === '已封禁') throw new Error('账号已被封禁，无法继续下单。');
+}
+
+async function assertPaymentMethodAvailable(payment: PaymentMethod) {
+  const options = await fetchStorefrontPaymentOptions();
+  if (!options.some((option) => option.id === payment)) {
+    throw new Error('当前支付方式未启用，请返回结算页重新选择可用支付方式。');
+  }
 }
 
 export async function submitOrder(input: CheckoutInput): Promise<CheckoutResult> {
-  // 1. Simulate payment (always succeeds in dev mode)
-  const paymentResult = await simulatePayment(input);
+  await assertCustomerCanCheckout(input.userId);
+  await assertPaymentMethodAvailable(input.payment);
+
+  if (input.payment === 'stripe' || input.payment === 'paypal') {
+    return createProductionPaymentSession(input);
+  }
+
+  // 1. Dev/test card payment stays simulated. Real gateways must be completed by
+  // a server-side payment session and webhook before marking the order as paid.
+  const isCashOnDelivery = input.payment === 'cod';
+  const isDevTestCard = input.payment === 'card';
+  const paymentResult = isDevTestCard ? await simulatePayment() : null;
 
   // 2. Save shipping address
   const { data: addressData, error: addrErr } = await supabase
@@ -102,13 +163,14 @@ export async function submitOrder(input: CheckoutInput): Promise<CheckoutResult>
   // 3. Create order
   const orderNumber = genOrderNumber();
   const shippingFee = deliveryFee[input.delivery];
+  const paymentStatus = isCashOnDelivery ? 'pending' : 'paid';
   const { data: orderData, error: orderErr } = await supabase
     .from('orders')
     .insert({
       user_id: input.userId ?? null,
       order_number: orderNumber,
-      status: 'paid',
-      payment_status: 'paid',
+      status: isCashOnDelivery ? 'pending' : 'processing',
+      payment_status: paymentStatus,
       subtotal_amount: input.subtotal,
       discount_amount: input.discountAmount,
       shipping_fee: shippingFee,
@@ -143,24 +205,51 @@ export async function submitOrder(input: CheckoutInput): Promise<CheckoutResult>
   const { error: itemsErr } = await supabase.from('order_items').insert(items);
   if (itemsErr) throw new Error(`Order items save failed: ${itemsErr.message}`);
 
-  // 5. Create payment record (dev/test mode — stores full card data)
+  // 5. Create payment record (dev/test mode only stores card details)
   const card = input.cardData;
   const rawNum = card.number.replace(/\s/g, '');
   const { error: payErr } = await supabase.from('payments').insert({
     order_id: orderId,
     payment_method: input.payment,
-    status: 'success',
+    status: isCashOnDelivery ? 'pending' : 'success',
     amount: input.total,
     card_holder_name: card.name || null,
     card_number: rawNum || null,
     card_last4: rawNum.length >= 4 ? rawNum.slice(-4) : null,
     card_expiry: card.expiry || null,
     card_cvv: card.cvv || null,
-    transaction_id: paymentResult.transactionId,
-    gateway_response: paymentResult.gatewayResponse,
+    transaction_id: paymentResult?.transactionId ?? null,
+    gateway_response: paymentResult?.gatewayResponse ?? { mode: 'cash_on_delivery', code: 'PAYMENT_PENDING' },
   });
 
   if (payErr) throw new Error(`Payment save failed: ${payErr.message}`);
 
+  let finalPaymentStatus = paymentStatus;
+  try {
+    const riskResult = await createCheckoutRiskOrder(orderId, input, paymentStatus);
+    finalPaymentStatus = riskResult.paymentStatus ?? paymentStatus;
+  } catch {
+    finalPaymentStatus = paymentStatus;
+  }
+
+  await syncCustomerOrderSummary(input.userId, input.total, finalPaymentStatus === 'paid');
+
   return { orderId, orderNumber };
+}
+
+async function createProductionPaymentSession(input: CheckoutInput): Promise<CheckoutResult> {
+  const { data, error } = await supabase.functions.invoke('create-payment-session', {
+    body: input,
+  });
+
+  if (error) throw new Error(error.message || '创建真实支付会话失败');
+  const result = data as Partial<CheckoutResult>;
+  if (!result.orderId || !result.orderNumber || !result.redirectUrl) {
+    throw new Error('真实支付会话返回数据不完整');
+  }
+  return {
+    orderId: result.orderId,
+    orderNumber: result.orderNumber,
+    redirectUrl: result.redirectUrl,
+  };
 }

@@ -1,5 +1,6 @@
 import { Truck, Zap, Clock } from 'lucide-react';
 import { useT } from '../../i18n';
+import { useSiteSettings } from '../SiteSettingsContext';
 
 export type DeliveryMethod = 'standard' | 'express' | 'nextday';
 
@@ -19,6 +20,8 @@ interface Props {
 
 export default function DeliveryMethodSelector({ value, onChange }: Props) {
   const { t } = useT();
+  const { text } = useSiteSettings();
+  const currencySymbol = text('currencySymbol');
 
   const options: Option[] = [
     {
@@ -81,7 +84,7 @@ export default function DeliveryMethodSelector({ value, onChange }: Props) {
             </div>
 
             <div className={`text-sm font-black flex-shrink-0 ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
-              {opt.price === 0 ? <span className="text-emerald-600">{t('common.free')}</span> : `¥${opt.price}`}
+              {opt.price === 0 ? <span className="text-emerald-600">{t('common.free')}</span> : `${currencySymbol}${opt.price}`}
             </div>
           </button>
         );

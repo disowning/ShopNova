@@ -21,7 +21,6 @@ export interface Product {
   rating: number;
   reviewCount: number;
   sold: number;
-  badge: string | null;
   isFlashSale?: boolean;
   images: string[];
   category: string;
@@ -29,6 +28,14 @@ export interface Product {
   skuGroups: SKUGroup[];
   specs: { label: string; value: string }[];
   highlights: string[];
+  tags: ProductTag[];
+}
+
+export interface ProductTag {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
 }
 
 export interface Category {

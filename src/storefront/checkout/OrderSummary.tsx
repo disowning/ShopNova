@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { CartItem } from '../StoreContext';
 import type { DeliveryMethod } from './DeliveryMethodSelector';
 import { useT } from '../../i18n';
+import { useSiteSettings } from '../SiteSettingsContext';
 
 const deliveryCost: Record<DeliveryMethod, number> = {
   standard: 0,
@@ -20,9 +21,11 @@ interface Props {
 export default function OrderSummary({ cart, delivery, discountAmount, couponCode }: Props) {
   const [expanded, setExpanded] = useState(true);
   const { t } = useT();
+  const { text } = useSiteSettings();
   const subtotal = cart.reduce((a, item) => a + item.effectivePrice * item.qty, 0);
   const shipping = deliveryCost[delivery];
   const total = subtotal + shipping - discountAmount;
+  const currencySymbol = text('currencySymbol');
 
   const deliveryLabel: Record<DeliveryMethod, string> = {
     standard: t('orderSummary.standardDelivery'),
@@ -45,7 +48,7 @@ export default function OrderSummary({ cart, delivery, discountAmount, couponCod
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-base font-black text-slate-900">¥{total.toFixed(2)}</span>
+          <span className="text-base font-black text-slate-900">{currencySymbol}{total.toFixed(2)}</span>
           {expanded ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}
         </div>
       </button>
@@ -69,7 +72,7 @@ export default function OrderSummary({ cart, delivery, discountAmount, couponCod
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-slate-900 line-clamp-2 leading-snug">{item.product.name}</div>
                     {skuDesc && <div className="text-xs text-slate-400 mt-0.5">{skuDesc}</div>}
-                    <div className="text-sm font-black text-slate-900 mt-1">¥{(item.effectivePrice * item.qty).toFixed(2)}</div>
+                    <div className="text-sm font-black text-slate-900 mt-1">{currencySymbol}{(item.effectivePrice * item.qty).toFixed(2)}</div>
                   </div>
                 </div>
               );
@@ -80,12 +83,12 @@ export default function OrderSummary({ cart, delivery, discountAmount, couponCod
           <div className="px-6 py-4 space-y-2.5 border-b border-slate-50">
             <div className="flex justify-between text-sm text-slate-600">
               <span>{t('orderSummary.productSubtotal')}</span>
-              <span className="font-semibold">¥{subtotal.toFixed(2)}</span>
+              <span className="font-semibold">{currencySymbol}{subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm text-slate-600">
               <span>{deliveryLabel[delivery]}</span>
               <span className="font-semibold">
-                {shipping === 0 ? <span className="text-emerald-600">{t('common.free')}</span> : `¥${shipping.toFixed(2)}`}
+                {shipping === 0 ? <span className="text-emerald-600">{t('common.free')}</span> : `${currencySymbol}${shipping.toFixed(2)}`}
               </span>
             </div>
             {discountAmount > 0 && (
@@ -96,12 +99,12 @@ export default function OrderSummary({ cart, delivery, discountAmount, couponCod
                   </svg>
                   {t('orderSummary.couponApplied', { code: couponCode })}
                 </span>
-                <span className="font-bold text-emerald-600">-¥{discountAmount.toFixed(2)}</span>
+                <span className="font-bold text-emerald-600">-{currencySymbol}{discountAmount.toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between text-sm text-slate-400">
               <span>{t('orderSummary.tax')}</span>
-              <span>¥0.00</span>
+              <span>{currencySymbol}0.00</span>
             </div>
           </div>
 
@@ -109,9 +112,9 @@ export default function OrderSummary({ cart, delivery, discountAmount, couponCod
           <div className="px-6 py-4 flex justify-between items-baseline bg-slate-50/60">
             <span className="text-sm font-bold text-slate-700">{t('orderSummary.total')}</span>
             <div className="text-right">
-              <div className="text-2xl font-black text-slate-900">¥{total.toFixed(2)}</div>
+              <div className="text-2xl font-black text-slate-900">{currencySymbol}{total.toFixed(2)}</div>
               {discountAmount > 0 && (
-                <div className="text-xs text-emerald-600 font-semibold">{t('orderSummary.saved', { amount: `¥${discountAmount.toFixed(2)}` })}</div>
+                <div className="text-xs text-emerald-600 font-semibold">{t('orderSummary.saved', { amount: `${currencySymbol}${discountAmount.toFixed(2)}` })}</div>
               )}
             </div>
           </div>

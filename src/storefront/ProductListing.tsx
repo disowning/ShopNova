@@ -6,6 +6,7 @@ import { useStore } from './StoreContext';
 import ProductCard from './ProductCard';
 import { useT } from '../i18n';
 import { getCategoryName } from './categoryLabels';
+import { useSiteSettings } from './SiteSettingsContext';
 
 interface Props {
   categoryId?: string;
@@ -17,6 +18,7 @@ interface Props {
 export default function ProductListing({ categoryId, categoryName, title, filter }: Props) {
   const { navigate } = useStore();
   const { t, locale } = useT();
+  const { text } = useSiteSettings();
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -61,6 +63,7 @@ export default function ProductListing({ categoryId, categoryName, title, filter
   });
 
   const activeCatObj = categories.find((c) => c.id === activeCat);
+  const currencySymbol = text('currencySymbol');
 
   return (
     <div className="bg-slate-50 min-h-screen">
@@ -161,7 +164,7 @@ export default function ProductListing({ categoryId, categoryName, title, filter
                     onClick={() => setPriceMax(v)}
                     className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${priceMax === v ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                   >
-                    {v === 0 ? t('listing.noLimit') : `¥${v}`}
+                    {v === 0 ? t('listing.noLimit') : `${currencySymbol}${v}`}
                   </button>
                 ))}
               </div>
@@ -187,7 +190,7 @@ export default function ProductListing({ categoryId, categoryName, title, filter
             )}
             {priceMax > 0 && (
               <span className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-semibold">
-                ≤¥{priceMax}
+                ≤{currencySymbol}{priceMax}
                 <button onClick={() => setPriceMax(0)}><X size={11} /></button>
               </span>
             )}

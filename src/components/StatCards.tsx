@@ -1,29 +1,30 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { ShoppingBag, Clock, CheckCircle, AlertCircle, ShieldAlert, DollarSign } from 'lucide-react';
-import { fetchDashboardStats, type DashboardStats } from '../lib/adminService';
+import { fetchDashboardStats, type DashboardFilters, type DashboardStats } from '../lib/adminService';
 
 function Skeleton() {
   return <div className="h-6 w-16 bg-slate-100 rounded animate-pulse" />;
 }
 
-export default function StatCards() {
+export default function StatCards({ filters }: { filters: DashboardFilters }) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    fetchDashboardStats()
+    setError(false);
+    fetchDashboardStats(filters)
       .then(setStats)
       .catch(() => setError(true));
-  }, []);
+  }, [filters]);
 
   const fmt = (n: number) => n.toLocaleString('zh-CN');
-  const fmtMoney = (n: number) => `¥${n.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  const fmtMoney = (n: number) => `$${n.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
   const cards = [
     {
-      label: '总订单',
+      label: '筛选订单',
       value: stats ? fmt(stats.totalOrders) : null,
-      sub: '数据库全量订单',
+      sub: '当前条件匹配',
       positive: true,
       icon: ShoppingBag,
       iconBg: 'bg-blue-50',
@@ -33,7 +34,7 @@ export default function StatCards() {
     {
       label: '今日订单',
       value: stats ? fmt(stats.todayOrders) : null,
-      sub: '今天 00:00 起',
+      sub: '当前条件内今日新增',
       positive: true,
       icon: Clock,
       iconBg: 'bg-sky-50',
@@ -73,7 +74,7 @@ export default function StatCards() {
     {
       label: '总销售额',
       value: stats ? fmtMoney(stats.totalRevenue) : null,
-      sub: '已支付订单总计',
+      sub: '当前条件已支付',
       positive: true,
       icon: DollarSign,
       iconBg: 'bg-violet-50',

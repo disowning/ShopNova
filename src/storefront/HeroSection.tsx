@@ -1,10 +1,30 @@
-import { ArrowRight, ShoppingBag, Star, Truck, Zap } from 'lucide-react';
+﻿import { ArrowRight, ShoppingBag, Star, Truck, Zap } from 'lucide-react';
 import { useStore } from './StoreContext';
+import { useCmsContent } from './CmsContentContext';
 import { useT } from '../i18n';
+import { editableAttrs } from './visualEditor';
 
 export default function HeroSection() {
   const { navigate } = useStore();
   const { t } = useT();
+  const { field } = useCmsContent();
+  const heroTag = field('home-hero', 'eyebrow', t('home.heroTag'));
+  const titleLine1 = field('home-hero', 'titleLine1', t('home.heroTitle1'));
+  const titleLine2 = field('home-hero', 'titleLine2', t('home.heroTitle2'));
+  const subtitleLine1 = field('home-hero', 'subtitleLine1', t('home.heroSubtitle1'));
+  const subtitleLine2 = field('home-hero', 'subtitleLine2', t('home.heroSubtitle2'));
+  const primaryButton = field('home-hero', 'primaryButton', t('home.shopNow'));
+  const secondaryButton = field('home-hero', 'secondaryButton', t('home.viewHot'));
+  const ratingLabel = field('home-hero', 'ratingLabel', t('home.ratingLabel'));
+  const freeShipping = field('home-hero', 'freeShipping', t('home.freeShipping'));
+  const fastShip = field('home-hero', 'fastShip', t('home.fastShip'));
+  const edit = (fieldKey: string, label: string) => editableAttrs({
+    entryId: 'home.hero',
+    source: 'cms',
+    itemId: 'home-hero',
+    fieldKey,
+    label,
+  });
 
   return (
     <section className="relative bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 overflow-hidden min-h-[600px] flex items-center">
@@ -19,22 +39,22 @@ export default function HeroSection() {
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left copy */}
           <div className="space-y-8">
-            <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-4 py-1.5 text-blue-300 text-xs font-semibold backdrop-blur-sm">
+            <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-4 py-1.5 text-blue-300 text-xs font-semibold backdrop-blur-sm" {...edit('eyebrow', '首页首屏顶部标签')}>
               <Zap size={12} className="text-blue-400" />
-              {t('home.heroTag')}
+              {heroTag}
             </div>
 
             <div className="space-y-3">
               <h1 className="text-5xl lg:text-6xl font-black text-white leading-[1.1] tracking-tight">
-                {t('home.heroTitle1')}
+                <span {...edit('titleLine1', '首页首屏标题第一行')}>{titleLine1}</span>
                 <br />
-                <span className="bg-gradient-to-r from-blue-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">
-                  {t('home.heroTitle2')}
+                <span className="bg-gradient-to-r from-blue-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent" {...edit('titleLine2', '首页首屏标题高亮行')}>
+                  {titleLine2}
                 </span>
               </h1>
               <p className="text-slate-400 text-lg leading-relaxed max-w-md">
-                {t('home.heroSubtitle1')}
-                <br className="hidden sm:block" />{t('home.heroSubtitle2')}
+                <span {...edit('subtitleLine1', '首页首屏副标题第一行')}>{subtitleLine1}</span>
+                <br className="hidden sm:block" /><span {...edit('subtitleLine2', '首页首屏副标题第二行')}>{subtitleLine2}</span>
               </p>
             </div>
 
@@ -44,26 +64,26 @@ export default function HeroSection() {
                 className="group flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold px-7 py-3.5 rounded-xl transition-all duration-200 shadow-lg shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 active:translate-y-0"
               >
                 <ShoppingBag size={17} />
-                {t('home.shopNow')}
+                <span {...edit('primaryButton', '首页首屏主按钮文案')}>{primaryButton}</span>
                 <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
               </button>
               <button
                 onClick={() => navigate({ type: 'listing', title: t('common.hotDeals') })}
                 className="flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/20 text-white font-semibold px-7 py-3.5 rounded-xl transition-all duration-200 backdrop-blur-sm hover:-translate-y-0.5 active:translate-y-0"
               >
-                {t('home.viewHot')}
+                <span {...edit('secondaryButton', '首页首屏辅助按钮文案')}>{secondaryButton}</span>
               </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-5 pt-2">
               {[
-                { icon: Star, text: t('home.ratingLabel') },
-                { icon: Truck, text: t('home.freeShipping') },
-                { icon: Zap, text: t('home.fastShip') },
+                { icon: Star, text: ratingLabel, fieldKey: 'ratingLabel', label: '首页首屏信任卖点 1' },
+                { icon: Truck, text: freeShipping, fieldKey: 'freeShipping', label: '首页首屏信任卖点 2' },
+                { icon: Zap, text: fastShip, fieldKey: 'fastShip', label: '首页首屏信任卖点 3' },
               ].map((item) => (
                 <div key={item.text} className="flex items-center gap-1.5 text-slate-400 text-sm">
                   <item.icon size={14} className="text-blue-400" />
-                  <span>{item.text}</span>
+                  <span {...edit(item.fieldKey, item.label)}>{item.text}</span>
                 </div>
               ))}
             </div>
@@ -118,8 +138,8 @@ export default function HeroSection() {
 
             <div className="absolute top-1/2 -translate-y-1/2 -left-4 flex flex-col gap-3">
               {[
-                { productId: 'p4', img: 'https://images.pexels.com/photos/1279365/pexels-photo-1279365.jpeg?auto=compress&cs=tinysrgb&w=80', label: 'MiniBass', price: '¥299' },
-                { productId: 'p3', img: 'https://images.pexels.com/photos/1294886/pexels-photo-1294886.jpeg?auto=compress&cs=tinysrgb&w=80', label: 'ClearCase', price: '¥79' },
+                { productId: 'p4', img: 'https://images.pexels.com/photos/1279365/pexels-photo-1279365.jpeg?auto=compress&cs=tinysrgb&w=80', label: 'MiniBass', price: '$299' },
+                { productId: 'p3', img: 'https://images.pexels.com/photos/1294886/pexels-photo-1294886.jpeg?auto=compress&cs=tinysrgb&w=80', label: 'ClearCase', price: '$79' },
               ].map((p) => (
                 <button
                   key={p.productId}

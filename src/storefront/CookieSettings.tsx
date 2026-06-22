@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { ChevronRight, Cookie, Check, Info, ChevronDown } from 'lucide-react';
 import { useStore } from './StoreContext';
 import { useT } from '../i18n';
+import { useCmsContent } from './CmsContentContext';
+import { editableAttrs } from './visualEditor';
 
 interface CookieCategory {
   id: 'necessary' | 'functional' | 'analytics' | 'marketing';
@@ -15,6 +17,16 @@ const cookieCategories: CookieCategory[] = [
   { id: 'analytics', required: false, defaultEnabled: true },
   { id: 'marketing', required: false, defaultEnabled: false },
 ];
+
+function editCookie(fieldKey: string, label: string) {
+  return editableAttrs({
+    entryId: 'policy.cookies',
+    source: 'cms',
+    itemId: 'cookie-settings',
+    fieldKey,
+    label,
+  });
+}
 
 function Toggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: () => void; disabled?: boolean }) {
   return (
@@ -88,10 +100,14 @@ function CategoryCard({ cat, enabled, onChange }: { cat: CookieCategory; enabled
 export default function CookieSettings() {
   const { navigate } = useStore();
   const { t } = useT();
+  const { field } = useCmsContent();
   const [prefs, setPrefs] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(cookieCategories.map((c) => [c.id, c.defaultEnabled]))
   );
   const [saved, setSaved] = useState(false);
+  const title = field('cookie-settings', 'title', t('cookie.title'));
+  const subtitle = field('cookie-settings', 'subtitle', t('cookie.subtitle'));
+  const intro = field('cookie-settings', 'intro', t('cookie.intro'));
 
   const markSaved = () => {
     setSaved(true);
@@ -124,18 +140,18 @@ export default function CookieSettings() {
           <div className="flex items-center gap-2 text-xs text-slate-400 mb-4">
             <button onClick={() => navigate({ type: 'home' })} className="hover:text-white transition-colors">{t('common.home')}</button>
             <ChevronRight size={12} />
-            <span className="text-slate-300">{t('cookie.title')}</span>
+            <span className="text-slate-300">{title}</span>
           </div>
           <div className="flex items-center gap-4 mb-4">
             <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
               <Cookie size={22} className="text-amber-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-black">{t('cookie.title')}</h1>
-              <p className="text-slate-400 text-sm mt-1">{t('cookie.subtitle')}</p>
+              <h1 className="text-3xl font-black" {...editCookie('title', 'Cookie 页面标题')}>{title}</h1>
+              <p className="text-slate-400 text-sm mt-1" {...editCookie('subtitle', 'Cookie 页面副标题')}>{subtitle}</p>
             </div>
           </div>
-          <p className="text-slate-400 text-sm max-w-2xl leading-relaxed">{t('cookie.intro')}</p>
+          <p className="text-slate-400 text-sm max-w-2xl leading-relaxed" {...editCookie('intro', 'Cookie 页面说明')}>{intro}</p>
         </div>
       </div>
 

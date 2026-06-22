@@ -42,7 +42,7 @@
   "home": {
     "shopNow": "立即購買",
     "viewHot": "查看熱賣",
-    "freeShipping": "滿 ¥299 免運費",
+    "freeShipping": "滿 $49 免運費",
     "fastShip": "24 小時內出貨",
     "newRelease": "新品首發",
     "categoriesTitle": "熱門分類",
@@ -57,7 +57,7 @@
     "subtotal": "小計（{count} 件）",
     "checkoutNow": "立即結帳",
     "remove": "移除",
-    "freeShippingHint": "再購 ¥{amount} 即可免運費",
+    "freeShippingHint": "再購 {amount} 即可免運費",
     "freeShippingReached": "已達免運門檻！"
   },
   "announcement": {
@@ -152,6 +152,9 @@
     "payment": {
       "card": "信用卡 / 簽帳金融卡",
       "cod": "貨到付款",
+      "loading": "正在讀取可用付款方式...",
+      "unavailableTitle": "暫無可用付款方式",
+      "unavailableDesc": "請聯絡商家，或在後台啟用開發測試付款、Stripe、PayPal 或貨到付款。",
       "demoNotice": "這是展示頁面，請勿輸入真實銀行卡資訊。測試卡號：4242 4242 4242 4242",
       "cardholderName": "持卡人姓名",
       "cardholderPlaceholder": "與銀行卡一致的姓名",
@@ -159,7 +162,7 @@
       "expiry": "有效期",
       "paypalNotice": "點擊「確認並付款」將前往 PayPal 安全付款頁面（展示模式）。",
       "walletNotice": "請在裝置驗證視窗中完成付款（展示模式）。",
-      "codNotice": "貨到付款僅支援中國大陸地區，需額外收取 ¥10 手續費。"
+      "codNotice": "貨到付款僅支援中國大陸地區，需額外收取 $10 手續費。"
     },
     "coupon": {
       "enterCode": "請輸入優惠碼",
@@ -170,7 +173,8 @@
       "placeholder": "輸入優惠碼（如 WELCOME15）",
       "validating": "驗證中",
       "apply": "套用",
-      "hint": "提示：試試"
+      "hint": "提示：試試",
+      "demoNote": "目前優惠碼為內建測試規則，僅用於展示：WELCOME15 / SAVE10 / NOVA20。正式優惠券需要接入資料庫規則。"
     },
     "countries": {
       "CN": "中國", "HK": "中國香港", "TW": "中國台灣", "MO": "中國澳門", "US": "美國", "CA": "加拿大", "MX": "墨西哥", "BR": "巴西", "AR": "阿根廷", "CL": "智利",
@@ -196,7 +200,12 @@
       "cityRequired": "請輸入城市",
       "postalRequired": "請輸入郵遞區號",
       "addressRequired": "請輸入街道地址",
-      "submitFailed": "提交失敗，請重試"
+      "cardNameRequired": "請輸入持卡人姓名",
+      "cardNumberRequired": "請輸入卡號",
+      "expiryRequired": "請輸入有效期",
+      "cvvRequired": "請輸入 CVV",
+      "submitFailed": "提交失敗，請重試",
+      "paymentUnavailable": "目前沒有可用付款方式，請先在後台啟用至少一種付款方式"
     }
   },
   "footer": {

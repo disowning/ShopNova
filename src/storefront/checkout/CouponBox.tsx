@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Tag, Check, X } from 'lucide-react';
 import { useT } from '../../i18n';
+import { useSiteSettings } from '../SiteSettingsContext';
 
 const VALID_CODES: Record<string, number> = {
   WELCOME15: 0.15,
@@ -18,9 +19,11 @@ interface Props {
 
 export default function CouponBox({ subtotal, onDiscount, onRemove, appliedCode, discountAmount }: Props) {
   const { t } = useT();
+  const { text } = useSiteSettings();
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const currencySymbol = text('currencySymbol');
 
   const apply = () => {
     const code = input.trim().toUpperCase();
@@ -55,7 +58,7 @@ export default function CouponBox({ subtotal, onDiscount, onRemove, appliedCode,
             <div className="text-xs text-emerald-600">
               <span className="font-mono font-bold">{appliedCode}</span>
               <span> · {t('checkout.coupon.saved')} </span>
-              <span className="font-black">¥{discountAmount.toFixed(2)}</span>
+              <span className="font-black">{currencySymbol}{discountAmount.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -108,6 +111,9 @@ export default function CouponBox({ subtotal, onDiscount, onRemove, appliedCode,
       <p className="text-[11px] text-slate-400 pl-1">
         {t('checkout.coupon.hint')}{' '}
         <button type="button" onClick={() => setInput('WELCOME15')} className="font-mono font-bold text-blue-500 hover:underline">WELCOME15</button>
+      </p>
+      <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-700">
+        {t('checkout.coupon.demoNote')}
       </p>
     </div>
   );

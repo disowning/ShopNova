@@ -1,11 +1,28 @@
 import { useState } from 'react';
 import { Mail, ArrowRight, Check } from 'lucide-react';
+import { useCmsContent } from './CmsContentContext';
 import { useT } from '../i18n';
+import { editableAttrs } from './visualEditor';
 
 export default function NewsletterSection() {
   const { t } = useT();
+  const { field } = useCmsContent();
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const title = field('home-newsletter', 'title', t('newsletter.title'));
+  const subtitleLine1 = field('home-newsletter', 'subtitleLine1', t('newsletter.subtitle1'));
+  const subtitleLine2 = field('home-newsletter', 'subtitleLine2', t('newsletter.subtitle2'));
+  const placeholder = field('home-newsletter', 'placeholder', t('newsletter.placeholder'));
+  const buttonText = field('home-newsletter', 'buttonText', t('newsletter.subscribe'));
+  const subscribedText = field('home-newsletter', 'subscribedText', t('newsletter.subscribed'));
+  const privacy = field('home-newsletter', 'privacy', t('newsletter.privacy'));
+  const edit = (fieldKey: string, label: string) => editableAttrs({
+    entryId: 'home.newsletter',
+    source: 'cms',
+    itemId: 'home-newsletter',
+    fieldKey,
+    label,
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,13 +44,13 @@ export default function NewsletterSection() {
           <Mail size={24} className="text-blue-400" />
         </div>
 
-        <h2 className="text-3xl sm:text-4xl font-black text-white mb-4">
-          {t('newsletter.title')}
+        <h2 className="text-3xl sm:text-4xl font-black text-white mb-4" {...edit('title', '首页订阅区标题')}>
+          {title}
         </h2>
         <p className="text-slate-400 text-base mb-8 leading-relaxed">
-          {t('newsletter.subtitle1')}
+          <span {...edit('subtitleLine1', '首页订阅区说明第一行')}>{subtitleLine1}</span>
           <br className="hidden sm:block" />
-          {t('newsletter.subtitle2')}
+          <span {...edit('subtitleLine2', '首页订阅区说明第二行')}>{subtitleLine2}</span>
         </p>
 
         <form onSubmit={handleSubmit} className="flex gap-3 max-w-md mx-auto">
@@ -43,7 +60,14 @@ export default function NewsletterSection() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder={t('newsletter.placeholder')}
+              placeholder={placeholder}
+              {...editableAttrs({
+                entryId: 'home.newsletter',
+                source: 'cms',
+                itemId: 'home-newsletter',
+                fieldKey: 'placeholder',
+                label: '首页订阅区输入框提示',
+              })}
               className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400 transition-all"
             />
           </div>
@@ -57,18 +81,18 @@ export default function NewsletterSection() {
           >
             {submitted ? (
               <>
-                <Check size={15} /> {t('newsletter.subscribed')}
+                <Check size={15} /> {subscribedText}
               </>
             ) : (
               <>
-                {t('newsletter.subscribe')} <ArrowRight size={15} />
+                <span {...edit('buttonText', '首页订阅区按钮文案')}>{buttonText}</span> <ArrowRight size={15} />
               </>
             )}
           </button>
         </form>
 
-        <p className="text-xs text-slate-600 mt-4">
-          {t('newsletter.privacy')}
+        <p className="text-xs text-slate-600 mt-4" {...edit('privacy', '首页订阅区隐私提示')}>
+          {privacy}
         </p>
       </div>
     </section>

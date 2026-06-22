@@ -2,13 +2,15 @@ import { CreditCard, Eye, EyeOff } from 'lucide-react';
 import { useState } from 'react';
 import { useT } from '../../i18n';
 import FormField from './FormField';
+import type { StorefrontPaymentOption } from '../../lib/paymentSettings';
 
-export type PaymentMethod = 'card' | 'paypal' | 'applepay' | 'googlepay' | 'cod';
+export type PaymentMethod = 'card' | 'stripe' | 'paypal' | 'cod';
 
 interface PaymentOption {
   id: PaymentMethod;
   label: string;
   icon: React.ReactNode;
+  notice?: string;
 }
 
 export interface CardData {
@@ -24,6 +26,8 @@ interface Props {
   cardData: CardData;
   onCardChange: (field: keyof CardData, value: string) => void;
   errors: Partial<Record<keyof CardData, string>>;
+  options?: StorefrontPaymentOption[];
+  loading?: boolean;
 }
 
 function formatCardNumber(v: string) {
@@ -36,65 +40,71 @@ function formatExpiry(v: string) {
   return d;
 }
 
-export default function PaymentMethodSelector({ method, onChange, cardData, onCardChange, errors }: Props) {
+export default function PaymentMethodSelector({ method, onChange, cardData, onCardChange, errors, options, loading = false }: Props) {
   const { t } = useT();
   const [showCvv, setShowCvv] = useState(false);
 
-  const paymentOptions: PaymentOption[] = [
+  const fallbackOptions: StorefrontPaymentOption[] = [
     {
       id: 'card',
+      providerId: 'dev_card',
       label: t('checkout.payment.card'),
-      icon: (
-        <svg className="w-6 h-5" viewBox="0 0 36 24" fill="none">
-          <rect width="36" height="24" rx="4" fill="#1A1F71" />
-          <rect x="0" y="8" width="36" height="5" fill="#F7B600" />
-          <rect x="4" y="15" width="10" height="2" rx="1" fill="white" opacity="0.7" />
-        </svg>
-      ),
-    },
-    {
-      id: 'paypal',
-      label: 'PayPal',
-      icon: (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
-          <path d="M7.5 19.5l1-6H6l.5-3h2.5l.5-3C10 5 11.5 4 13.5 4c1 0 2.5.5 2.5.5l-.5 3s-1-.3-1.5-.3c-1 0-1.5.5-1.5 1.5L12 11h2.5l-.5 3H11.5l-1 5.5H7.5z" fill="#009cde" />
-          <path d="M14 7.5s2.5-.5 3 1.5c.5 2-1 3.5-3 4H12l-1 6h-2l1.5-9h2.5c2 0 3-1 3-2.5z" fill="#003087" />
-        </svg>
-      ),
-    },
-    {
-      id: 'applepay',
-      label: 'Apple Pay',
-      icon: (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.4c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.39-1.32 2.76-2.53 3.99zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-        </svg>
-      ),
-    },
-    {
-      id: 'googlepay',
-      label: 'Google Pay',
-      icon: (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
-          <path d="M12 11.3v1.8h4.3c-.2 1.1-1.3 3.2-4.3 3.2-2.6 0-4.7-2.1-4.7-4.8s2.1-4.8 4.7-4.8c1.5 0 2.5.6 3 1.2l2-1.9C15.6 5.2 14 4.5 12 4.5 8.1 4.5 5 7.7 5 11.5S8.1 18.5 12 18.5c4.2 0 7-2.9 7-7 0-.5 0-.8-.1-1.2H12z" fill="#4285F4" />
-          <path d="M12 11.3v1.8h4.3c-.2 1.1-1.3 3.2-4.3 3.2" fill="#34A853" />
-        </svg>
-      ),
+      notice: t('checkout.payment.demoNotice'),
     },
     {
       id: 'cod',
+      providerId: 'cod',
       label: t('checkout.payment.cod'),
-      icon: (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <rect x="3" y="6" width="18" height="13" rx="2" />
-          <path d="M3 10h18M8 14h.01M12 14h.01" strokeLinecap="round" />
-        </svg>
-      ),
+      notice: t('checkout.payment.codNotice'),
     },
   ];
 
+  const cardIcon = (
+    <svg className="w-6 h-5" viewBox="0 0 36 24" fill="none">
+      <rect width="36" height="24" rx="4" fill="#1A1F71" />
+      <rect x="0" y="8" width="36" height="5" fill="#F7B600" />
+      <rect x="4" y="15" width="10" height="2" rx="1" fill="white" opacity="0.7" />
+    </svg>
+  );
+
+  const iconMap: Record<PaymentMethod, React.ReactNode> = {
+    card: cardIcon,
+    stripe: cardIcon,
+    paypal: (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
+        <path d="M7.5 19.5l1-6H6l.5-3h2.5l.5-3C10 5 11.5 4 13.5 4c1 0 2.5.5 2.5.5l-.5 3s-1-.3-1.5-.3c-1 0-1.5.5-1.5 1.5L12 11h2.5l-.5 3H11.5l-1 5.5H7.5z" fill="#009cde" />
+        <path d="M14 7.5s2.5-.5 3 1.5c.5 2-1 3.5-3 4H12l-1 6h-2l1.5-9h2.5c2 0 3-1 3-2.5z" fill="#003087" />
+      </svg>
+    ),
+    cod: (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <rect x="3" y="6" width="18" height="13" rx="2" />
+        <path d="M3 10h18M8 14h.01M12 14h.01" strokeLinecap="round" />
+      </svg>
+    ),
+  };
+
+  const sourceOptions = options ?? fallbackOptions;
+  const paymentOptions: PaymentOption[] = sourceOptions.map((option) => ({
+    id: option.id,
+    label: option.label,
+    notice: option.notice,
+    icon: iconMap[option.id],
+  }));
+
   return (
     <div className="space-y-2.5">
+      {loading && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+          {t('checkout.payment.loading')}
+        </div>
+      )}
+      {!loading && paymentOptions.length === 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+          <div className="font-bold">{t('checkout.payment.unavailableTitle')}</div>
+          <p className="mt-1 text-xs leading-5 text-amber-700">{t('checkout.payment.unavailableDesc')}</p>
+        </div>
+      )}
       {paymentOptions.map((opt) => {
         const isSelected = method === opt.id;
         return (
@@ -121,7 +131,7 @@ export default function PaymentMethodSelector({ method, onChange, cardData, onCa
               <div className="mt-2 bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-3">
                 <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-700">
                   <CreditCard size={13} className="flex-shrink-0 mt-0.5" />
-                  <span>{t('checkout.payment.demoNotice')}</span>
+                  <span>{opt.notice || t('checkout.payment.demoNotice')}</span>
                 </div>
 
                 <FormField
@@ -198,16 +208,16 @@ export default function PaymentMethodSelector({ method, onChange, cardData, onCa
                 <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                 </svg>
-                {t('checkout.payment.paypalNotice')}
+                {opt.notice || t('checkout.payment.paypalNotice')}
               </div>
             )}
 
-            {isSelected && (opt.id === 'applepay' || opt.id === 'googlepay') && (
-              <div className="mt-2 bg-slate-100 border border-slate-200 rounded-xl p-4 text-sm text-slate-600 flex items-center gap-2">
+            {isSelected && opt.id === 'stripe' && (
+              <div className="mt-2 bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700 flex items-center gap-2">
                 <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                 </svg>
-                {t('checkout.payment.walletNotice')}
+                {opt.notice}
               </div>
             )}
 
@@ -216,7 +226,7 @@ export default function PaymentMethodSelector({ method, onChange, cardData, onCa
                 <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                 </svg>
-                {t('checkout.payment.codNotice')}
+                {opt.notice || t('checkout.payment.codNotice')}
               </div>
             )}
           </div>

@@ -1,0 +1,12 @@
+services:
+  shopnova-web:
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    image: shopnova-web:latest
+    container_name: shopnova-web
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"

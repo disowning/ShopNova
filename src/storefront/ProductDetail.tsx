@@ -6,7 +6,9 @@ import { useStore } from './StoreContext';
 import ProductCard from './ProductCard';
 import { useT } from '../i18n';
 import { getCategoryName } from './categoryLabels';
-import { fetchTranslationLookup } from '../lib/translationService';
+import { fetchTranslationLookup, type TranslationSourceMap } from '../lib/translationService';
+import { useSiteSettings } from './SiteSettingsContext';
+import { fetchProductReviews, type ProductReview } from '../lib/reviewService';
 
 type DisplaySKUOption = {
   value: string;
@@ -19,9 +21,62 @@ type DisplaySKUGroup = {
   options: DisplaySKUOption[];
 };
 
+function ProductReviewStars({ rating }: { rating: number }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {[...Array(5)].map((_, i) => (
+        <Star
+          key={i}
+          size={13}
+          className={i < Math.round(rating) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'}
+        />
+      ))}
+    </div>
+  );
+}
+
+function buildProductDetailSourceMap(
+  product: Product,
+  attrs: DBProductAttribute[],
+  skus: DBProductSKU[],
+): TranslationSourceMap {
+  const fields: Record<string, string> = {};
+
+  product.highlights.forEach((highlight, index) => {
+    fields[`highlight:${index}`] = highlight;
+  });
+
+  product.specs.forEach((spec, index) => {
+    fields[`spec:${index}:label`] = spec.label;
+    fields[`spec:${index}:value`] = spec.value;
+  });
+
+  product.skuGroups.forEach((group) => {
+    fields[`sku_key:${group.name}`] = group.name;
+    group.options.forEach((option) => {
+      fields[`sku_value:${group.name}:${option.label}`] = option.label;
+    });
+  });
+
+  attrs.forEach((attr) => {
+    fields[`attribute:${attr.id}:name`] = attr.name;
+    fields[`attribute:${attr.id}:value`] = attr.value;
+  });
+
+  skus.forEach((sku) => {
+    Object.entries(sku.attributes_json ?? {}).forEach(([key, value]) => {
+      fields[`sku_key:${key}`] = key;
+      fields[`sku_value:${key}:${value}`] = value;
+    });
+  });
+
+  return { [product.id]: fields };
+}
+
 export default function ProductDetail({ productId }: { productId: string }) {
   const { t, locale } = useT();
   const { navigate, addToCart, setCartOpen, wishlist, toggleWishlist } = useStore();
+  const { text, storeSwitches } = useSiteSettings();
   const [product, setProduct] = useState<Product | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +85,7 @@ export default function ProductDetail({ productId }: { productId: string }) {
   const [dbImages, setDbImages] = useState<DBProductImage[]>([]);
   const [dbSkus, setDbSkus] = useState<DBProductSKU[]>([]);
   const [dbAttrs, setDbAttrs] = useState<DBProductAttribute[]>([]);
+  const [productReviews, setProductReviews] = useState<ProductReview[]>([]);
   const [productTranslations, setProductTranslations] = useState<Record<string, string>>({});
 
   const [activeImg, setActiveImg] = useState(0);
@@ -50,12 +106,17 @@ export default function ProductDetail({ productId }: { productId: string }) {
       fetchProductImages(productId),
       fetchProductSKUs(productId),
       fetchProductAttributes(productId),
-      fetchTranslationLookup('product', locale, [productId]),
-    ]).then(([p, imgs, skus, attrs, translations]) => {
+      fetchProductReviews(productId),
+    ]).then(async ([p, imgs, skus, attrs, reviews]) => {
+      const translations = p
+        ? await fetchTranslationLookup('product', locale, [productId], buildProductDetailSourceMap(p, attrs, skus))
+        : {};
+
       setProduct(p);
       setDbImages(imgs);
       setDbSkus(skus);
       setDbAttrs(attrs);
+      setProductReviews(reviews);
       setProductTranslations(translations[productId] ?? {});
 
       if (p) {
@@ -224,6 +285,7 @@ export default function ProductDetail({ productId }: { productId: string }) {
   const discount = effectiveOriginalPrice > effectivePrice
     ? Math.round((1 - effectivePrice / effectiveOriginalPrice) * 100)
     : 0;
+  const currencySymbol = text('currencySymbol');
   const isWished = wishlist.includes(product.id);
   const isOutOfStock = effectiveStock <= 0;
 
@@ -290,12 +352,7 @@ export default function ProductDetail({ productId }: { productId: string }) {
   const displayImages = images;
   const currentImg = skuImage || displayImages[activeImg] || product.images[0];
   const categoryName = getCategoryName(t, product.categoryId, product.category);
-
-  const badgeStyle: Record<string, string> = {
-    [t('common.hot')]: 'bg-rose-500 text-white',
-    [t('common.new')]: 'bg-violet-600 text-white',
-    [t('common.flashDiscount')]: 'bg-amber-500 text-white',
-  };
+  const visibleTags = product.tags.slice(0, 3);
 
   return (
     <div className="bg-white min-h-screen">
@@ -333,10 +390,18 @@ export default function ProductDetail({ productId }: { productId: string }) {
                 alt={product.name}
                 className="w-full h-full object-cover transition-opacity duration-300"
               />
-              {product.badge && (
-                <span className={`absolute top-4 left-4 text-xs font-bold px-3 py-1 rounded-full shadow ${badgeStyle[product.badge]}`}>
-                  {product.badge}
-                </span>
+              {visibleTags.length > 0 && (
+                <div className="absolute top-4 left-4 flex max-w-[calc(100%-2rem)] flex-wrap gap-1.5">
+                  {visibleTags.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="text-xs font-bold px-3 py-1 rounded-full text-white shadow"
+                      style={{ backgroundColor: tag.color || '#3b82f6' }}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
               )}
               {displayImages.length > 1 && !skuImage && (
                 <>
@@ -399,28 +464,36 @@ export default function ProductDetail({ productId }: { productId: string }) {
             </div>
 
             {/* Rating */}
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1">
-                {[...Array(5)].map((_, i) => (
-                  <Star
-                    key={i}
-                    size={14}
-                    className={i < Math.floor(product.rating) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'}
-                  />
-                ))}
+            {(storeSwitches.showReviews || storeSwitches.showSalesCount) && (
+              <div className="flex items-center gap-3">
+                {storeSwitches.showReviews && (
+                  <>
+                    <div className="flex items-center gap-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={i}
+                          size={14}
+                          className={i < Math.floor(product.rating) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-sm font-bold text-slate-800">{product.rating}</span>
+                    <span className="text-sm text-slate-400">{t('common.reviews', { count: product.reviewCount.toLocaleString() })}</span>
+                  </>
+                )}
+                {storeSwitches.showReviews && storeSwitches.showSalesCount && <span className="text-sm text-slate-400">·</span>}
+                {storeSwitches.showSalesCount && (
+                  <span className="text-sm text-slate-400">{t('common.soldCount', { count: product.sold.toLocaleString() })}</span>
+                )}
               </div>
-              <span className="text-sm font-bold text-slate-800">{product.rating}</span>
-              <span className="text-sm text-slate-400">{t('common.reviews', { count: product.reviewCount.toLocaleString() })}</span>
-              <span className="text-sm text-slate-400">·</span>
-              <span className="text-sm text-slate-400">{t('common.soldCount', { count: product.sold.toLocaleString() })}</span>
-            </div>
+            )}
 
             {/* Price */}
             <div className="flex items-baseline gap-3 bg-slate-50 rounded-xl px-4 py-3">
-              <span className="text-3xl font-black text-slate-900">¥{effectivePrice}</span>
+              <span className="text-3xl font-black text-slate-900">{currencySymbol}{effectivePrice}</span>
               {discount > 0 && (
                 <>
-                  <span className="text-base text-slate-400 line-through">¥{effectiveOriginalPrice}</span>
+                  <span className="text-base text-slate-400 line-through">{currencySymbol}{effectiveOriginalPrice}</span>
                   <span className="text-sm font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">-{discount}%</span>
                 </>
               )}
@@ -497,7 +570,7 @@ export default function ProductDetail({ productId }: { productId: string }) {
                           </span>
                         )}
                         {option.priceModifier && option.priceModifier > 0 && !isOOS && (
-                          <span className="ml-1 text-xs text-slate-400">+¥{option.priceModifier}</span>
+                          <span className="ml-1 text-xs text-slate-400">+{currencySymbol}{option.priceModifier}</span>
                         )}
                       </button>
                     );
@@ -628,6 +701,49 @@ export default function ProductDetail({ productId }: { productId: string }) {
           <h3 className="text-sm font-bold text-slate-700 mb-2">{t('product.description')}</h3>
           <p className="text-sm text-slate-600 leading-relaxed">{product.description}</p>
         </div>
+
+        {storeSwitches.showReviews && productReviews.length > 0 && (
+          <div className="mt-8 rounded-2xl border border-slate-100 bg-white p-6">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">{t('review.title')}</h3>
+                <p className="mt-1 text-sm text-slate-500">{t('common.reviews', { count: productReviews.length })}</p>
+              </div>
+              <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2">
+                <ProductReviewStars rating={product.rating} />
+                <span className="text-sm font-black text-amber-700">{product.rating.toFixed(1)}</span>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {productReviews.map((review) => (
+                <div key={review.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${review.avatarColor} text-xs font-black text-white`}>
+                        {review.avatarText}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-bold text-slate-900">{review.customerName}</div>
+                        <div className="text-[11px] text-slate-400">{review.reviewDate}</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-shrink-0 items-center gap-1">
+                      <ProductReviewStars rating={review.rating} />
+                      <span className="text-xs font-bold text-slate-700">{review.rating.toFixed(1)}</span>
+                    </div>
+                  </div>
+                  {review.title && <div className="mb-1.5 text-sm font-bold text-slate-800">{review.title}</div>}
+                  <p className="text-sm leading-relaxed text-slate-600">{review.content}</p>
+                  <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                    <Check size={11} />
+                    {t('review.verified')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Related */}
         {relatedProducts.length > 0 && (

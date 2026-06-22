@@ -3,9 +3,9 @@
  * used by all storefront components.
  */
 import { supabase } from './supabase';
-import type { Product, Category } from '../storefront/types';
+import type { Product, Category, ProductTag } from '../storefront/types';
 import type { Locale } from '../i18n';
-import { fetchTranslationLookup, SOURCE_LOCALE } from './translationService';
+import { fetchTranslationLookup, SOURCE_LOCALE, type TranslationSourceMap } from './translationService';
 
 // ─── DB row types ─────────────────────────────────────────────────────────────
 
@@ -22,16 +22,17 @@ interface DBProduct {
   stock: number;
   rating: number;
   sold_count: number;
+  review_count: number;
   status: string;
   is_featured: boolean;
   is_hot: boolean;
   is_new: boolean;
   is_flash_sale: boolean;
-  tag: string | null;
   sku_groups: Product['skuGroups'];
   specs: Product['specs'];
   highlights: string[];
   product_categories: { name: string } | null;
+  product_tag_relations?: { product_tags: DBProductTag | null }[];
 }
 
 interface DBCategory {
@@ -40,6 +41,7 @@ interface DBCategory {
   icon: string;
   gradient: string;
   count: number;
+  parent_id?: string | null;
 }
 
 export interface DBProductSKU {
@@ -80,11 +82,25 @@ export interface DBProductTag {
   color: string;
   description: string;
   status: string;
+  deleted_at?: string | null;
 }
 
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
 function toProduct(row: DBProduct): Product {
+  const tags = (row.product_tag_relations ?? [])
+    .map((relation) => relation.product_tags)
+    .filter((tag): tag is DBProductTag => {
+      if (!tag) return false;
+      return tag.status === 'active' && !tag.deleted_at;
+    })
+    .map<ProductTag>((tag) => ({
+      id: tag.id,
+      name: tag.name,
+      slug: tag.slug,
+      color: tag.color,
+    }));
+
   return {
     id: row.id,
     name: row.name,
@@ -94,9 +110,8 @@ function toProduct(row: DBProduct): Product {
     originalPrice: Number(row.original_price),
     stock: Number(row.stock),
     rating: Number(row.rating),
-    reviewCount: row.sold_count,
+    reviewCount: Number(row.review_count ?? 0),
     sold: row.sold_count,
-    badge: (row.tag ?? null) as Product['badge'],
     isFlashSale: Boolean(row.is_flash_sale),
     images: Array.isArray(row.images) ? row.images : [row.image_url],
     category: row.product_categories?.name ?? '',
@@ -104,6 +119,7 @@ function toProduct(row: DBProduct): Product {
     skuGroups: Array.isArray(row.sku_groups) ? row.sku_groups : [],
     specs: Array.isArray(row.specs) ? row.specs : [],
     highlights: Array.isArray(row.highlights) ? row.highlights : [],
+    tags,
   };
 }
 
@@ -117,14 +133,40 @@ function toCategory(row: DBCategory): Category {
   };
 }
 
+function buildProductSourceMap(products: Product[]): TranslationSourceMap {
+  return products.reduce<TranslationSourceMap>((acc, product) => {
+    acc[product.id] = {
+      name: product.name,
+      short_description: product.tagline,
+      description: product.description,
+    };
+    return acc;
+  }, {});
+}
+
+function buildCategorySourceMapFromProducts(products: Product[]): TranslationSourceMap {
+  return products.reduce<TranslationSourceMap>((acc, product) => {
+    if (!product.categoryId) return acc;
+    acc[product.categoryId] = { name: product.category };
+    return acc;
+  }, {});
+}
+
+function buildCategorySourceMap(categories: Category[]): TranslationSourceMap {
+  return categories.reduce<TranslationSourceMap>((acc, category) => {
+    acc[category.id] = { name: category.name };
+    return acc;
+  }, {});
+}
+
 async function applyProductTranslations(products: Product[], locale: Locale = SOURCE_LOCALE): Promise<Product[]> {
   if (locale === SOURCE_LOCALE || products.length === 0) return products;
 
   const productIds = products.map((product) => product.id);
   const categoryIds = Array.from(new Set(products.map((product) => product.categoryId).filter(Boolean)));
   const [productTranslations, categoryTranslations] = await Promise.all([
-    fetchTranslationLookup('product', locale, productIds),
-    fetchTranslationLookup('category', locale, categoryIds),
+    fetchTranslationLookup('product', locale, productIds, buildProductSourceMap(products)),
+    fetchTranslationLookup('category', locale, categoryIds, buildCategorySourceMapFromProducts(products)),
   ]);
 
   return products.map((product) => {
@@ -143,7 +185,7 @@ async function applyProductTranslations(products: Product[], locale: Locale = SO
 async function applyCategoryTranslations(categories: Category[], locale: Locale = SOURCE_LOCALE): Promise<Category[]> {
   if (locale === SOURCE_LOCALE || categories.length === 0) return categories;
 
-  const translations = await fetchTranslationLookup('category', locale, categories.map((category) => category.id));
+  const translations = await fetchTranslationLookup('category', locale, categories.map((category) => category.id), buildCategorySourceMap(categories));
   return categories.map((category) => ({
     ...category,
     name: translations[category.id]?.name ?? category.name,
@@ -154,10 +196,27 @@ async function applyCategoryTranslations(categories: Category[], locale: Locale 
 
 const BASE_SELECT = `
   id, category_id, name, short_description, description,
-  image_url, images, price, original_price, stock, rating, sold_count,
-  status, is_featured, is_hot, is_new, is_flash_sale, tag, sku_groups, specs, highlights,
-  product_categories(name)
+  image_url, images, price, original_price, stock, rating, sold_count, review_count,
+  status, is_featured, is_hot, is_new, is_flash_sale, sku_groups, specs, highlights,
+  product_categories(name),
+  product_tag_relations(product_tags(id, name, slug, color, status, deleted_at))
 `;
+
+async function fetchActiveProductCountsByCategory(): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from('products')
+    .select('category_id')
+    .eq('status', 'active')
+    .is('deleted_at', null);
+
+  if (error || !data) return {};
+
+  return data.reduce<Record<string, number>>((acc, row: { category_id: string | null }) => {
+    if (!row.category_id) return acc;
+    acc[row.category_id] = (acc[row.category_id] ?? 0) + 1;
+    return acc;
+  }, {});
+}
 
 async function queryProducts(filter: Record<string, unknown>, locale: Locale = SOURCE_LOCALE): Promise<Product[]> {
   let q = supabase
@@ -232,13 +291,20 @@ export async function fetchProductsByCategory(categoryId: string, locale: Locale
 export async function fetchCategories(locale: Locale = SOURCE_LOCALE): Promise<Category[]> {
   const { data, error } = await supabase
     .from('product_categories')
-    .select('id, name, icon, gradient, count')
+    .select('id, name, icon, gradient, count, parent_id')
     .eq('status', 'active')
     .is('deleted_at', null)
     .order('sort_order');
 
   if (error || !data) return [];
-  return applyCategoryTranslations((data as DBCategory[]).map(toCategory), locale);
+
+  const countMap = await fetchActiveProductCountsByCategory();
+  const categories = (data as DBCategory[]).map((category) => ({
+    ...category,
+    count: countMap[category.id] ?? 0,
+  }));
+
+  return applyCategoryTranslations(categories.map(toCategory), locale);
 }
 
 // ─── Extended fetch helpers (admin / product detail) ─────────────────────────

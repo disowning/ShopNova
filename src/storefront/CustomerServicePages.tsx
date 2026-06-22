@@ -12,6 +12,8 @@ import {
 import { useT } from '../i18n';
 import { useAuth } from './AuthContext';
 import { useStore } from './StoreContext';
+import { useCmsContent } from './CmsContentContext';
+import { editableAttrs } from './visualEditor';
 
 type CustomerServiceKind = 'order-lookup' | 'return-policy' | 'logistics' | 'faq';
 
@@ -29,10 +31,38 @@ const accents: Record<CustomerServiceKind, string> = {
   faq: 'from-violet-600 to-indigo-500',
 };
 
+const cmsItemByKind: Record<CustomerServiceKind, string> = {
+  'order-lookup': 'order-lookup',
+  'return-policy': 'return-policy',
+  logistics: 'logistics',
+  faq: 'faq-main',
+};
+
+const serviceEntryIds: Record<CustomerServiceKind, string> = {
+  'order-lookup': 'service.orderLookup',
+  'return-policy': 'service.returnPolicy',
+  logistics: 'service.logistics',
+  faq: 'service.faq',
+};
+
+function editCms(kind: CustomerServiceKind, fieldKey: string, label: string) {
+  return editableAttrs({
+    entryId: serviceEntryIds[kind],
+    source: 'cms',
+    itemId: cmsItemByKind[kind],
+    fieldKey,
+    label,
+  });
+}
+
 function Hero({ kind }: { kind: CustomerServiceKind }) {
   const { navigate } = useStore();
   const { t } = useT();
+  const { field } = useCmsContent();
   const Icon = icons[kind];
+  const itemId = cmsItemByKind[kind];
+  const title = field(itemId, 'title', t(`customerService.${kind}.title`));
+  const subtitle = field(itemId, 'subtitle', t(`customerService.${kind}.subtitle`));
 
   return (
     <div className="bg-slate-950 text-white">
@@ -42,7 +72,7 @@ function Hero({ kind }: { kind: CustomerServiceKind }) {
           <ChevronRight size={12} />
           <span>{t('customerService.common.title')}</span>
           <ChevronRight size={12} />
-          <span className="text-slate-200">{t(`customerService.${kind}.title`)}</span>
+          <span className="text-slate-200">{title}</span>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-5">
           <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${accents[kind]} flex items-center justify-center shadow-lg flex-shrink-0`}>
@@ -50,8 +80,8 @@ function Hero({ kind }: { kind: CustomerServiceKind }) {
           </div>
           <div>
             <p className="text-sm font-bold text-blue-300 mb-2">{t('customerService.common.title')}</p>
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{t(`customerService.${kind}.title`)}</h1>
-            <p className="text-sm text-slate-400 mt-3 leading-relaxed max-w-3xl">{t(`customerService.${kind}.subtitle`)}</p>
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight" {...editCms(kind, 'title', '页面标题')}>{title}</h1>
+            <p className="text-sm text-slate-400 mt-3 leading-relaxed max-w-3xl" {...editCms(kind, 'subtitle', '页面副标题')}>{subtitle}</p>
           </div>
         </div>
       </div>
@@ -82,8 +112,11 @@ function Card({ icon: Icon, title, desc }: { icon: React.ElementType; title: str
 
 function OrderLookupPage() {
   const { t } = useT();
+  const { field } = useCmsContent();
   const { navigate } = useStore();
   const { isLoggedIn } = useAuth();
+  const buttonText = field('order-lookup', 'buttonText', t(isLoggedIn ? 'customerService.order-lookup.viewOrders' : 'customerService.order-lookup.loginToView'));
+  const note = field('order-lookup', 'note', t('customerService.order-lookup.note'));
 
   return (
     <article className="max-w-5xl mx-auto px-4 sm:px-6 py-12">
@@ -99,11 +132,11 @@ function OrderLookupPage() {
           className="mt-3 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors"
         >
           <ClipboardList size={16} />
-          {t(isLoggedIn ? 'customerService.order-lookup.viewOrders' : 'customerService.order-lookup.loginToView')}
+          <span {...editCms('order-lookup', 'buttonText', '订单查询按钮文字')}>{buttonText}</span>
         </button>
       </Section>
       <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 text-sm text-slate-600 leading-7">
-        {t('customerService.order-lookup.note')}
+        <span {...editCms('order-lookup', 'note', '订单查询说明')}>{note}</span>
       </div>
     </article>
   );
@@ -111,6 +144,8 @@ function OrderLookupPage() {
 
 function ReturnPolicyPage() {
   const { t } = useT();
+  const { field } = useCmsContent();
+  const process = field('return-policy', 'process', t('customerService.return-policy.processDesc'));
   return (
     <article className="max-w-5xl mx-auto px-4 sm:px-6 py-12">
       <div className="grid md:grid-cols-3 gap-4 mb-10">
@@ -119,7 +154,7 @@ function ReturnPolicyPage() {
         <Card icon={PackageCheck} title={t('customerService.return-policy.card3Title')} desc={t('customerService.return-policy.card3Desc')} />
       </div>
       <Section title={t('customerService.return-policy.processTitle')}>
-        <p>{t('customerService.return-policy.processDesc')}</p>
+        <p {...editCms('return-policy', 'process', '退换货流程说明')}>{process}</p>
       </Section>
       <Section title={t('customerService.return-policy.noticeTitle')}>
         <p>{t('customerService.return-policy.noticeDesc')}</p>
@@ -130,6 +165,9 @@ function ReturnPolicyPage() {
 
 function LogisticsPage() {
   const { t } = useT();
+  const { field } = useCmsContent();
+  const shippingTime = field('logistics', 'shippingTime', t('customerService.logistics.standardDesc'));
+  const exceptionNote = field('logistics', 'exceptionNote', t('customerService.logistics.note'));
   return (
     <article className="max-w-5xl mx-auto px-4 sm:px-6 py-12">
       <div className="grid md:grid-cols-3 gap-4 mb-10">
@@ -142,27 +180,34 @@ function LogisticsPage() {
           {['standard', 'express', 'nextday'].map((key) => (
             <div key={key} className="flex items-center justify-between gap-4 px-5 py-4 border-b border-slate-100 last:border-0">
               <span className="font-bold text-slate-800 text-sm">{t(`customerService.logistics.${key}Title`)}</span>
-              <span className="text-sm text-slate-500 text-right">{t(`customerService.logistics.${key}Desc`)}</span>
+              <span className="text-sm text-slate-500 text-right" {...(key === 'standard' ? editCms('logistics', 'shippingTime', '标准配送时效') : {})}>
+                {key === 'standard' ? shippingTime : t(`customerService.logistics.${key}Desc`)}
+              </span>
             </div>
           ))}
         </div>
       </Section>
-      <p className="text-sm text-slate-500 leading-7">{t('customerService.logistics.note')}</p>
+      <p className="text-sm text-slate-500 leading-7" {...editCms('logistics', 'exceptionNote', '物流异常说明')}>{exceptionNote}</p>
     </article>
   );
 }
 
 function FAQPage() {
   const { t } = useT();
-  const items = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'];
+  const { field } = useCmsContent();
+  const items = [1, 2, 3, 4, 5, 6].map((index) => ({
+    id: `q${index}`,
+    title: field('faq-main', `question${index}`, t(`customerService.faq.q${index}Title`)),
+    desc: field('faq-main', `answer${index}`, t(`customerService.faq.q${index}Desc`)),
+  }));
 
   return (
     <article className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
       <div className="space-y-4">
-        {items.map((key) => (
-          <div key={key} className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-            <h3 className="font-black text-slate-900 mb-2">{t(`customerService.faq.${key}Title`)}</h3>
-            <p className="text-sm text-slate-500 leading-7">{t(`customerService.faq.${key}Desc`)}</p>
+        {items.map((item) => (
+          <div key={item.id} className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+            <h3 className="font-black text-slate-900 mb-2" {...editCms('faq', `question${item.id.replace('q', '')}`, 'FAQ 问题')}>{item.title}</h3>
+            <p className="text-sm text-slate-500 leading-7" {...editCms('faq', `answer${item.id.replace('q', '')}`, 'FAQ 答案')}>{item.desc}</p>
           </div>
         ))}
       </div>

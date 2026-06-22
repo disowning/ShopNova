@@ -1,23 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, BarChart3, PieChart, ShoppingBag, DollarSign } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-
-interface MonthlyData {
-  month: string;
-  revenue: number;
-  orders: number;
-}
-
-interface TopProduct {
-  name: string;
-  revenue: number;
-  qty: number;
-}
-
-interface DailyOrder {
-  date: string;
-  count: number;
-}
+import { fetchAnalyticsSummary, type DailyOrder, type MonthlyData, type TopProduct } from '../lib/analyticsAdminService';
 
 function BarChartSVG({ data }: { data: MonthlyData[] }) {
   if (data.length === 0) return <div className="h-[140px] flex items-center justify-center text-xs text-slate-400">暂无数据</div>;
@@ -49,7 +32,7 @@ function BarChartSVG({ data }: { data: MonthlyData[] }) {
             <text x={x + barW / 2} y={chartH + 12} textAnchor="middle" fontSize="7" fill="#94a3b8">{m.month}</text>
             {isCurrent && m.revenue > 0 && (
               <text x={x + barW / 2} y={y - 4} textAnchor="middle" fontSize="6.5" fill="#2563eb" fontWeight="bold">
-                {m.revenue >= 10000 ? `¥${(m.revenue / 10000).toFixed(1)}万` : `¥${m.revenue}`}
+                {m.revenue >= 10000 ? `$${(m.revenue / 10000).toFixed(1)}万` : `$${m.revenue}`}
               </text>
             )}
           </g>
@@ -91,86 +74,33 @@ export default function DataAnalysis() {
   const [dailyOrders, setDailyOrders] = useState<DailyOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [kpi, setKpi] = useState({ totalRevenue: 0, totalOrders: 0, avgOrder: 0, growth: 0 });
+  const [error, setError] = useState('');
 
   useEffect(() => {
+    let ignore = false;
     (async () => {
       setLoading(true);
-
-      // Fetch all orders for aggregation
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('id, total_amount, created_at, status')
-        .order('created_at', { ascending: true });
-
-      const allOrders = orders ?? [];
-
-      // Monthly aggregation
-      const monthMap = new Map<string, { revenue: number; orders: number }>();
-      allOrders.forEach((o) => {
-        const d = new Date(o.created_at);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        const entry = monthMap.get(key) || { revenue: 0, orders: 0 };
-        entry.revenue += Number(o.total_amount) || 0;
-        entry.orders += 1;
-        monthMap.set(key, entry);
-      });
-      const monthly = [...monthMap.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .slice(-7)
-        .map(([key, val]) => ({
-          month: `${parseInt(key.split('-')[1])}月`,
-          revenue: val.revenue,
-          orders: val.orders,
-        }));
-      setMonthlyData(monthly);
-
-      // Daily orders (last 30 days)
-      const now = new Date();
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const dayMap = new Map<string, number>();
-      for (let i = 0; i < 30; i++) {
-        const d = new Date(thirtyDaysAgo.getTime() + i * 24 * 60 * 60 * 1000);
-        dayMap.set(d.toISOString().slice(0, 10), 0);
+      setError('');
+      try {
+        const result = await fetchAnalyticsSummary();
+        if (ignore) return;
+        setMonthlyData(result.monthlyData);
+        setTopProducts(result.topProducts);
+        setDailyOrders(result.dailyOrders);
+        setKpi(result.kpi);
+      } catch (err) {
+        if (!ignore) {
+          setError(err instanceof Error ? err.message : '数据分析加载失败');
+          setMonthlyData([]);
+          setTopProducts([]);
+          setDailyOrders([]);
+          setKpi({ totalRevenue: 0, totalOrders: 0, avgOrder: 0, growth: 0 });
+        }
+      } finally {
+        if (!ignore) setLoading(false);
       }
-      allOrders.forEach((o) => {
-        const day = new Date(o.created_at).toISOString().slice(0, 10);
-        if (dayMap.has(day)) dayMap.set(day, (dayMap.get(day) || 0) + 1);
-      });
-      setDailyOrders([...dayMap.entries()].map(([date, count]) => ({ date, count })));
-
-      // KPI
-      const totalRevenue = allOrders.reduce((a, o) => a + (Number(o.total_amount) || 0), 0);
-      const totalOrders = allOrders.length;
-      const avgOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-
-      let growth = 0;
-      if (monthly.length >= 2) {
-        const prev = monthly[monthly.length - 2].revenue;
-        const cur = monthly[monthly.length - 1].revenue;
-        if (prev > 0) growth = ((cur - prev) / prev) * 100;
-      }
-      setKpi({ totalRevenue, totalOrders, avgOrder, growth });
-
-      // Top products from order_items
-      const { data: items } = await supabase
-        .from('order_items')
-        .select('product_name, subtotal, qty');
-      const prodMap = new Map<string, { revenue: number; qty: number }>();
-      (items ?? []).forEach((item) => {
-        const name = item.product_name || '未知产品';
-        const entry = prodMap.get(name) || { revenue: 0, qty: 0 };
-        entry.revenue += Number(item.subtotal) || 0;
-        entry.qty += item.qty || 0;
-        prodMap.set(name, entry);
-      });
-      const prods = [...prodMap.entries()]
-        .map(([name, val]) => ({ name, revenue: val.revenue, qty: val.qty }))
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 5);
-      setTopProducts(prods);
-
-      setLoading(false);
     })();
+    return () => { ignore = true; };
   }, []);
 
   const todayCount = dailyOrders.length > 0 ? dailyOrders[dailyOrders.length - 1].count : 0;
@@ -198,16 +128,22 @@ export default function DataAnalysis() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-slate-800">数据分析</h2>
-          <p className="text-xs text-slate-400 mt-0.5">订单趋势、产品销售与营收分析</p>
+          <p className="text-xs text-slate-400 mt-0.5">按已支付有效订单统计营收、订单趋势与产品销售</p>
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* KPI Row */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: '累计营收', value: kpi.totalRevenue >= 10000 ? `¥${(kpi.totalRevenue / 10000).toFixed(1)}万` : `¥${kpi.totalRevenue.toLocaleString()}`, sub: `环比 ${kpi.growth >= 0 ? '+' : ''}${kpi.growth.toFixed(1)}%`, icon: DollarSign, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: '累计营收', value: kpi.totalRevenue >= 10000 ? `$${(kpi.totalRevenue / 10000).toFixed(1)}万` : `$${kpi.totalRevenue.toLocaleString()}`, sub: `环比 ${kpi.growth >= 0 ? '+' : ''}${kpi.growth.toFixed(1)}%`, icon: DollarSign, color: 'text-blue-600', bg: 'bg-blue-50' },
           { label: '累计订单', value: kpi.totalOrders.toLocaleString(), sub: '全部订单数', icon: ShoppingBag, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: '客单价', value: `¥${kpi.avgOrder.toFixed(0)}`, sub: '平均订单金额', icon: BarChart3, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { label: '客单价', value: `$${kpi.avgOrder.toFixed(0)}`, sub: '平均订单金额', icon: BarChart3, color: 'text-amber-600', bg: 'bg-amber-50' },
           { label: '环比增长', value: `${kpi.growth >= 0 ? '+' : ''}${kpi.growth.toFixed(1)}%`, sub: '较上月收入增长', icon: TrendingUp, color: 'text-rose-600', bg: 'bg-rose-50' },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm flex items-center gap-3">
@@ -292,7 +228,7 @@ export default function DataAnalysis() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-semibold text-slate-700 truncate">{p.name}</span>
-                    <span className="text-xs font-bold text-slate-800 ml-2 flex-shrink-0">¥{p.revenue.toLocaleString()}</span>
+                    <span className="text-xs font-bold text-slate-800 ml-2 flex-shrink-0">${p.revenue.toLocaleString()}</span>
                   </div>
                   <div className="h-1.5 bg-slate-100 rounded-full">
                     <div className="h-1.5 bg-blue-500 rounded-full" style={{ width: `${(p.revenue / (topProducts[0]?.revenue || 1)) * 100}%` }}></div>
