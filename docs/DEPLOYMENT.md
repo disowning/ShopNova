@@ -195,7 +195,83 @@ docker compose build --no-cache
 docker compose up -d
 ```
 
-## 8. 域名和 HTTPS
+## 8. Vercel 部署前端
+
+如果只是先做样品站、演示站，推荐先用 Vercel 部署前端。这样不用配置 VPS、Nginx、Docker 和 HTTPS。
+
+### 8.1 导入 GitHub 仓库
+
+1. 打开 Vercel。
+2. 登录你的 GitHub 账号。
+3. 点击 `Add New Project`。
+4. 选择仓库：
+
+```text
+disowning/ShopNova
+```
+
+5. Framework Preset 选择：
+
+```text
+Vite
+```
+
+6. Build Command 使用默认：
+
+```text
+npm run build
+```
+
+7. Output Directory 使用默认：
+
+```text
+dist
+```
+
+### 8.2 填写 Vercel 环境变量
+
+在 Vercel 项目的 `Settings` -> `Environment Variables` 里添加：
+
+```env
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+这两个值在 Supabase 后台获取：
+
+- `VITE_SUPABASE_URL`：Supabase Project URL。
+- `VITE_SUPABASE_ANON_KEY`：Supabase anon / publishable key。
+
+保存后点击部署。
+
+### 8.3 部署后要回填 Supabase Secrets
+
+Vercel 部署完成后，你会得到一个域名，例如：
+
+```text
+https://shopnova-demo.vercel.app
+```
+
+把这个域名写回 Supabase Edge Function secrets：
+
+```bash
+supabase secrets set PUBLIC_SITE_URL=https://shopnova-demo.vercel.app
+```
+
+如果真实支付需要跳转回站点，也要在 Stripe / PayPal 后台配置这个正式域名。
+
+### 8.4 样品站最小检查
+
+部署完成后检查：
+
+- 首页能打开。
+- 商品列表能加载。
+- 登录页能打开。
+- 后台管理员能登录。
+- 开发测试支付能完成一笔订单。
+- 支付管理、客户管理、风险订单、数据分析、系统设置页面能正常打开。
+
+## 9. 域名和 HTTPS
 
 Docker 容器内部使用 Nginx 监听 80，宿主机通过 `APP_PORT` 暴露。正式环境建议外层再加 Nginx、Caddy、Traefik 或云负载均衡做域名和 HTTPS。
 
@@ -223,7 +299,7 @@ server {
 - Stripe / PayPal webhook 地址
 - 支付平台 return / cancel URL
 
-## 9. 上线检查清单
+## 10. 上线检查清单
 
 - `.env` 已填写正确 Supabase URL 和 anon key。
 - `supabase db push` 已成功执行。
@@ -238,7 +314,7 @@ server {
 - 域名和 HTTPS 已配置。
 - Supabase RLS 和后台权限已复查。
 
-## 10. 最短部署顺序
+## 11. 最短部署顺序
 
 ```bash
 supabase db push
