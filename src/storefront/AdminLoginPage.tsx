@@ -51,11 +51,6 @@ export default function AdminLoginPage({ onAdminLogin }: Props) {
 
         {/* Card */}
         <div className="bg-slate-800 rounded-3xl border border-slate-700 p-8 shadow-2xl">
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 mb-6 text-xs text-amber-300">
-            <span className="font-bold">测试管理员账号：</span>
-            <span className="font-mono"> admin@test.com / 123456</span>
-          </div>
-
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <div className="flex items-center gap-2.5 bg-red-900/30 border border-red-700/50 rounded-xl px-4 py-3 text-sm text-red-400">

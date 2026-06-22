@@ -79,9 +79,6 @@ function AdminLoginGate({ onLogin, onBack }: { onLogin: () => void; onBack: () =
           <p className="text-slate-400 text-sm mt-1">仅限管理员访问</p>
         </div>
         <div className="bg-slate-800 rounded-3xl border border-slate-700 p-8">
-          <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 mb-6">
-            测试账号：<span className="font-mono">admin@test.com / 123456</span>
-          </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && <div className="text-sm text-red-400 bg-red-900/20 border border-red-700/30 rounded-xl px-4 py-3">{error}</div>}
             <input
