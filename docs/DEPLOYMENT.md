@@ -314,7 +314,40 @@ server {
 - 域名和 HTTPS 已配置。
 - Supabase RLS 和后台权限已复查。
 
-## 11. 最短部署顺序
+## 11. 样品站保活
+
+如果样品站暂时使用 Supabase 免费版，可以用 GitHub Actions 每天请求一次 Supabase，降低项目闲置暂停的概率。
+
+项目已内置工作流：
+
+```text
+.github/workflows/supabase-keepalive.yml
+```
+
+在 GitHub 仓库里打开：
+
+```text
+Settings -> Secrets and variables -> Actions -> New repository secret
+```
+
+添加两个 Secrets：
+
+```env
+SUPABASE_KEEPALIVE_URL=https://your-project-ref.supabase.co
+SUPABASE_KEEPALIVE_ANON_KEY=your_supabase_publishable_key
+```
+
+保存后，打开：
+
+```text
+Actions -> Supabase Keepalive -> Run workflow
+```
+
+手动运行一次，成功后它会每天自动运行一次。
+
+正式生产不建议长期依赖免费版保活，建议升级 Supabase Pro 或自托管 Supabase。
+
+## 12. 最短部署顺序
 
 ```bash
 supabase db push
